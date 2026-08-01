@@ -3,12 +3,13 @@ name = "parqkit"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-description = "A fast CLI and Rust library for inspecting, converting, and merging Parquet files."
+description = "A fast Rust CLI and library for inspecting, streaming, converting, and merging Parquet data with Arrow."
 license = "MIT"
 repository = "https://github.com/sxndmxn/parqkit"
+homepage = "https://docs.rs/parqkit"
 documentation = "https://docs.rs/parqkit"
-keywords = ["parquet", "cli", "data", "arrow"]
-categories = ["command-line-utilities", "data-structures"]
+keywords = ["parquet", "arrow", "cli", "data-conversion", "data-engineering"]
+categories = ["command-line-utilities", "encoding"]
 exclude = ["/.github", "/AGENTS.md", "/stress"]
 
 [features]

@@ -1,6 +1,10 @@
 # Parqkit — Fast Parquet CLI and Rust library
 
-Inspect, preview, convert, and merge Parquet files with pretty interactive output and predictable formats for scripts. The typed, streaming library API is the foundation for future jq-like querying.
+[![Crates.io](https://img.shields.io/crates/v/parqkit.svg)](https://crates.io/crates/parqkit)
+[![Documentation](https://docs.rs/parqkit/badge.svg)](https://docs.rs/parqkit)
+[![CI](https://github.com/sxndmxn/parqkit/actions/workflows/ci.yml/badge.svg)](https://github.com/sxndmxn/parqkit/actions/workflows/ci.yml)
+
+Fast Rust CLI and library for inspecting, streaming, converting, and merging Parquet data with Arrow. Parqkit combines pretty interactive output with predictable formats for scripts, while its typed streaming API provides the foundation for future jq-like querying.
 
 ## Installation
 
