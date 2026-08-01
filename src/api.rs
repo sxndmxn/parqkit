@@ -26,11 +26,15 @@ pub fn scan(dataset: &Dataset, kind: ScanKind, options: ScanOptions) -> Result<V
         .paths()
         .map(|path| {
             let path = path.to_path_buf();
-            let batches = match kind {
+            let (schema, batches) = match kind {
                 ScanKind::Head => engine::parquet::read_head(&path, options.rows)?,
                 ScanKind::Tail => engine::parquet::read_tail(&path, options.rows)?,
             };
-            Ok(ScanResult { path, batches })
+            Ok(ScanResult {
+                path,
+                schema,
+                batches,
+            })
         })
         .collect()
 }
@@ -73,11 +77,13 @@ pub fn info(dataset: &Dataset) -> Result<Vec<FileInfo>> {
 
 pub(crate) fn convert(input: &Path, output: &Path) -> Result<()> {
     let builder = engine::parquet::reader_builder(input)?;
+    let schema = std::sync::Arc::clone(builder.schema());
     let reader = builder
         .build()
         .map_err(|error| crate::ParqkitError::from_read(input, error))?;
     let pending_output = crate::atomic_output::PendingOutput::new(output)?;
-    let mut writer = crate::output::BatchFileWriter::create_at(pending_output.path(), output)?;
+    let mut writer =
+        crate::output::BatchFileWriter::create_at(pending_output.path(), output, &schema)?;
 
     for batch_result in reader {
         let batch = batch_result.map_err(|error| crate::ParqkitError::corrupted(input, &error))?;

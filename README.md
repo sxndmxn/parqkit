@@ -77,12 +77,12 @@ Total: 1000000
 
 ```bash
 $ parqkit stats data.parquet
-+--------+--------+-------+-------+------+
-| Column | Type   | Nulls | Min   | Max  |
-+==========================================+
-| id     | INT64  | 0     | 1     | 1000 |
-| name   | STRING | 5     | Alice | Zoe  |
-+--------+--------+-------+-------+------+
++--------+--------+-------+-------+------+----------+
+| Column | Type   | Nulls | Min   | Max  | Complete |
++=====================================================+
+| id     | INT64  | 0     | 1     | 1000 | Yes      |
+| name   | STRING | 5     | Alice | Zoe  | Yes      |
++--------+--------+-------+-------+------+----------+
 ```
 
 ### File info
@@ -128,8 +128,14 @@ $ parqkit schema data.parquet --output jsonl # One JSON object per schema column
 ```
 
 Schema and stats JSON output include display type plus explicit physical/logical type
-metadata. Stats JSON preserves numeric and boolean min/max values as native JSON
-types, and renders physical binary values as deterministic hexadecimal strings.
+metadata. Nested Parquet columns use their full dotted paths. Stats output includes a
+`statistics_complete` field; unavailable null counts and bounds are emitted as `null`
+instead of misleading zeroes or partial values. Finite numeric and boolean bounds use
+native JSON types, non-finite floats use `"NaN"`, `"Infinity"`, or `"-Infinity"`, and
+physical binary values use deterministic hexadecimal strings.
+
+Empty Parquet scans retain their schema, so CSV output still includes headers and
+multi-file structured scans still validate schema compatibility.
 
 `count` prints plain text counts, `convert` writes the format implied by the output file extension, and `merge` writes a Parquet file.
 
@@ -151,6 +157,7 @@ $ parqkit schema *.parquet
 ## Development
 
 - [Core contracts](docs/core-contracts.md) captures the foundation invariants for input handling, output rendering, safe writes, and error behavior.
+- Stress fixtures and the `parqkit-generate` helper are opt-in: `cargo test --all-features` or `cargo build --features stress-tools --bin parqkit-generate`.
 
 ## License
 

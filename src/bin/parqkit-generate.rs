@@ -101,6 +101,7 @@ impl From<CompressionCodec> for Compression {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    validate_cli(&cli)?;
 
     eprintln!(
         "Generating {} rows x {} cols -> {}",
@@ -150,6 +151,17 @@ fn main() -> Result<()> {
     let file_size_mb = file_size as f64 / 1_048_576.0;
     eprintln!("Done! {rows_written} rows, {file_size} bytes ({file_size_mb:.2} MB)");
 
+    Ok(())
+}
+
+fn validate_cli(cli: &Cli) -> Result<()> {
+    anyhow::ensure!(cli.cols > 0, "--cols must be greater than zero");
+    anyhow::ensure!(cli.batch_size > 0, "--batch-size must be greater than zero");
+    anyhow::ensure!(
+        cli.null_ratio.is_finite() && (0.0..=1.0).contains(&cli.null_ratio),
+        "--null-ratio must be between 0 and 1"
+    );
+    anyhow::ensure!(cli.string_len > 0, "--string-len must be greater than zero");
     Ok(())
 }
 
@@ -316,4 +328,42 @@ fn generate_unicode_string(rng: &mut StdRng) -> String {
         "🧑‍🤝‍🧑👨‍👩‍👧‍👦",              // ZWJ sequences
     ];
     templates[rng.gen_range(0..templates.len())].to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_cli() -> Cli {
+        Cli {
+            rows: 10,
+            cols: 2,
+            output: PathBuf::from("fixture.parquet"),
+            batch_size: 10,
+            seed: 42,
+            null_ratio: 0.1,
+            string_len: 8,
+            profile: DataProfile::Mixed,
+            compression: CompressionCodec::Snappy,
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_generation_bounds() {
+        let mut cli = valid_cli();
+        cli.batch_size = 0;
+        assert!(validate_cli(&cli).is_err());
+
+        cli = valid_cli();
+        cli.cols = 0;
+        assert!(validate_cli(&cli).is_err());
+
+        cli = valid_cli();
+        cli.null_ratio = f64::NAN;
+        assert!(validate_cli(&cli).is_err());
+
+        cli = valid_cli();
+        cli.string_len = 0;
+        assert!(validate_cli(&cli).is_err());
+    }
 }

@@ -8,7 +8,7 @@ PARQKIT="./target/release/parqkit"
 
 # Check dependencies
 if ! command -v hyperfine &> /dev/null; then
-    echo "Error: hyperfine not found. Install with: brew install hyperfine"
+    echo "Error: hyperfine not found. Install with: sudo pacman -S hyperfine"
     exit 1
 fi
 
@@ -65,7 +65,7 @@ fi
 
 # ============================================================================
 echo ""
-echo ">>> TAIL (full file scan required)"
+echo ">>> TAIL (reads only the final row groups needed)"
 echo ""
 
 if [[ -f "$FIXTURES_DIR/medium_1m.parquet" ]]; then
@@ -114,20 +114,6 @@ echo ""
 if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
     hyperfine --warmup 5 \
         "$PARQKIT info $FIXTURES_DIR/huge_100m.parquet"
-fi
-
-# ============================================================================
-echo ""
-echo ">>> QUERY (DataFusion SQL engine)"
-echo ""
-
-if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
-    hyperfine --warmup 2 --runs 5 \
-        "$PARQKIT count $FIXTURES_DIR/large_10m.parquet"
-
-    echo ""
-    hyperfine --warmup 2 --runs 3 \
-        "$PARQKIT tail -n 1000 $FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================

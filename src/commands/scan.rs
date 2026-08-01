@@ -4,8 +4,7 @@ use crate::api;
 use crate::cli::args::{HeadArgs, TailArgs};
 use crate::dataset::Dataset;
 use crate::{commands, output, ParqkitError, Result, ScanKind, ScanOptions, ScanResult};
-use arrow::datatypes::SchemaRef;
-use std::path::PathBuf;
+use std::sync::Arc;
 
 pub fn run_head(args: HeadArgs) -> Result<()> {
     run_scan(
@@ -39,11 +38,15 @@ fn run_scan(
 
     if let Some(structured_output) = output_format.structured() {
         validate_compatible_schemas(&results)?;
+        let schema = results
+            .first()
+            .map(|result| Arc::clone(&result.schema))
+            .ok_or(ParqkitError::NoInputFiles)?;
         let batches = results
             .into_iter()
             .flat_map(|result| result.batches)
             .collect::<Vec<_>>();
-        output::write_structured_batches(structured_output, quiet, &batches)?;
+        output::write_structured_batches(structured_output, quiet, &schema, &batches)?;
     } else {
         for result in results {
             commands::print_source_header(&dataset, &result.path, quiet);
@@ -55,23 +58,18 @@ fn run_scan(
 }
 
 fn validate_compatible_schemas(results: &[ScanResult]) -> Result<()> {
-    let mut first_schema: Option<(PathBuf, SchemaRef)> = None;
+    let Some(first) = results.first() else {
+        return Ok(());
+    };
 
-    for result in results {
-        for batch in &result.batches {
-            let schema = batch.schema();
-            if let Some((first_path, expected_schema)) = &first_schema {
-                if schema.as_ref() != expected_schema.as_ref() {
-                    return Err(ParqkitError::SchemaMismatch {
-                        file1: first_path.display().to_string(),
-                        file2: result.path.display().to_string(),
-                        details: "Cannot combine scan results with different schemas for structured output"
-                            .to_string(),
-                    });
-                }
-            } else {
-                first_schema = Some((result.path.clone(), schema));
-            }
+    for result in results.iter().skip(1) {
+        if result.schema.as_ref() != first.schema.as_ref() {
+            return Err(ParqkitError::SchemaMismatch {
+                file1: first.path.display().to_string(),
+                file2: result.path.display().to_string(),
+                details: "Cannot combine scan results with different schemas for structured output"
+                    .to_string(),
+            });
         }
     }
 

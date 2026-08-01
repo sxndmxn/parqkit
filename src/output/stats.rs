@@ -10,14 +10,17 @@ pub fn write_table<W: Write>(
 ) -> std::io::Result<()> {
     let mut table = Table::new();
     if !quiet {
-        table.set_header(vec!["Column", "Type", "Nulls", "Min", "Max"]);
+        table.set_header(vec!["Column", "Type", "Nulls", "Min", "Max", "Complete"]);
     }
 
     for row in rows {
         table.add_row(vec![
             Cell::new(&row.column),
             Cell::new(row.display_type()),
-            Cell::new(row.null_count),
+            Cell::new(
+                row.null_count
+                    .map_or_else(|| "N/A".to_string(), |count| count.to_string()),
+            ),
             Cell::new(
                 row.min
                     .as_ref()
@@ -28,6 +31,7 @@ pub fn write_table<W: Write>(
                     .as_ref()
                     .map_or_else(|| "N/A".to_string(), |value| row.display_stat_value(value)),
             ),
+            Cell::new(if row.statistics_complete { "Yes" } else { "No" }),
         ]);
     }
 
@@ -40,16 +44,17 @@ pub fn write_csv<W: Write>(
     include_header: bool,
 ) -> std::io::Result<()> {
     if include_header {
-        writeln!(writer, "column,type,null_count,min,max")?;
+        writeln!(writer, "column,type,null_count,min,max,statistics_complete")?;
     }
 
     for row in rows {
         writeln!(
             writer,
-            "{},{},{},{},{}",
+            "{},{},{},{},{},{}",
             escape_csv(&row.column),
             escape_csv(&row.display_type()),
-            row.null_count,
+            row.null_count
+                .map_or_else(String::new, |count| count.to_string()),
             escape_csv(
                 &row.min
                     .as_ref()
@@ -60,6 +65,7 @@ pub fn write_csv<W: Write>(
                     .as_ref()
                     .map_or_else(String::new, |value| row.display_stat_value(value))
             ),
+            row.statistics_complete,
         )?;
     }
 
@@ -72,18 +78,22 @@ pub fn write_csv_results<W: Write>(
     include_header: bool,
 ) -> std::io::Result<()> {
     if include_header {
-        writeln!(writer, "file,column,type,null_count,min,max")?;
+        writeln!(
+            writer,
+            "file,column,type,null_count,min,max,statistics_complete"
+        )?;
     }
 
     for result in results {
         for row in &result.rows {
             writeln!(
                 writer,
-                "{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{}",
                 escape_csv(&result.path.display().to_string()),
                 escape_csv(&row.column),
                 escape_csv(&row.display_type()),
-                row.null_count,
+                row.null_count
+                    .map_or_else(String::new, |count| count.to_string()),
                 escape_csv(
                     &row.min
                         .as_ref()
@@ -94,6 +104,7 @@ pub fn write_csv_results<W: Write>(
                         .as_ref()
                         .map_or_else(String::new, |value| row.display_stat_value(value))
                 ),
+                row.statistics_complete,
             )?;
         }
     }

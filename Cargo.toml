@@ -8,6 +8,10 @@ repository = "https://github.com/sxndmxn/parqkit"
 keywords = ["parquet", "cli", "data", "arrow"]
 categories = ["command-line-utilities", "data-structures"]
 
+[features]
+default = []
+stress-tools = ["dep:anyhow", "dep:rand"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 parquet = "53"
@@ -15,10 +19,13 @@ arrow = { version = "53", features = ["prettyprint"] }
 comfy-table = "7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-anyhow = "1"
+anyhow = { version = "1", optional = true }
 thiserror = "2"
 glob = "0.3"
-rand = "0.8"
+rand = { version = "0.8", optional = true }
+
+[dev-dependencies]
+anyhow = "1"
 
 [[bin]]
 name = "parqkit"
@@ -27,6 +34,12 @@ path = "src/main.rs"
 [[bin]]
 name = "parqkit-generate"
 path = "src/bin/parqkit-generate.rs"
+required-features = ["stress-tools"]
+
+[[test]]
+name = "stress"
+path = "tests/stress.rs"
+required-features = ["stress-tools"]
 
 [lints.rust]
 unsafe_code = "forbid"

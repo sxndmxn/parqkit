@@ -5,11 +5,13 @@ use crate::model::{
 };
 use crate::Result;
 use arrow::array::RecordBatch;
+use arrow::datatypes::SchemaRef;
 use serde::Serialize;
 use serde_json::Value;
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 mod csv;
 mod csv_support;
@@ -72,9 +74,10 @@ struct StatsJsonRow {
     column: String,
     #[serde(rename = "type")]
     display_type: String,
-    null_count: u64,
+    null_count: Option<u64>,
     min: Option<Value>,
     max: Option<Value>,
+    statistics_complete: bool,
     physical_type: String,
     logical_type: Option<String>,
 }
@@ -99,12 +102,24 @@ pub fn write_table_batches(quiet: bool, batches: &[RecordBatch]) -> Result<()> {
 pub fn write_structured_batches(
     output: StructuredOutputFormat,
     quiet: bool,
+    schema: &SchemaRef,
     batches: &[RecordBatch],
 ) -> Result<()> {
     match output {
         StructuredOutputFormat::Json => json::write_json(io::stdout().lock(), batches)?,
         StructuredOutputFormat::Jsonl => json::write_jsonl(io::stdout().lock(), batches)?,
-        StructuredOutputFormat::Csv => csv::write_batches(io::stdout().lock(), batches, !quiet)?,
+        StructuredOutputFormat::Csv => {
+            if batches.is_empty() {
+                let empty_batch = RecordBatch::new_empty(Arc::clone(schema));
+                csv::write_batches(
+                    io::stdout().lock(),
+                    std::slice::from_ref(&empty_batch),
+                    !quiet,
+                )?;
+            } else {
+                csv::write_batches(io::stdout().lock(), batches, !quiet)?;
+            }
+        }
     }
     Ok(())
 }
@@ -252,10 +267,10 @@ enum BatchFileWriterKind {
 }
 
 impl BatchFileWriter {
-    pub fn create_at(write_path: &Path, error_path: &Path) -> Result<Self> {
+    pub fn create_at(write_path: &Path, error_path: &Path, schema: &SchemaRef) -> Result<Self> {
         let inner = match file_output_format(error_path)? {
             FileOutputFormat::Csv => BatchFileWriterKind::Csv(Box::new(
-                csv::BatchFileWriter::create(write_path)
+                csv::BatchFileWriter::create(write_path, Arc::clone(schema))
                     .map_err(|error| ParqkitError::write_error(error_path, error))?,
             )),
             FileOutputFormat::Json => BatchFileWriterKind::Json(
@@ -282,12 +297,9 @@ impl BatchFileWriter {
         .map_err(|error| ParqkitError::write_error(&self.path, error))
     }
 
-    pub fn finish(mut self) -> Result<()> {
-        match &mut self.inner {
-            BatchFileWriterKind::Csv(writer) => {
-                writer.finish();
-                Ok(())
-            }
+    pub fn finish(self) -> Result<()> {
+        match self.inner {
+            BatchFileWriterKind::Csv(mut writer) => writer.finish(),
             BatchFileWriterKind::Json(writer) => writer.finish(),
             BatchFileWriterKind::Jsonl(writer) => writer.finish(),
         }
@@ -380,6 +392,7 @@ fn stats_row(file: Option<&Path>, row: &ColumnStats) -> StatsJsonRow {
             .max
             .as_ref()
             .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
+        statistics_complete: row.statistics_complete,
         physical_type: row.column_type.physical.to_string(),
         logical_type: row
             .column_type
@@ -408,8 +421,8 @@ fn stat_value_json(value: &StatValue, logical_type: Option<&LogicalTypeKind>) ->
     match value {
         StatValue::Int32(inner) => Value::from(*inner),
         StatValue::Int64(inner) => Value::from(*inner),
-        StatValue::Float(inner) => Value::from(*inner),
-        StatValue::Double(inner) => Value::from(*inner),
+        StatValue::Float(inner) => json_float(f64::from(*inner)),
+        StatValue::Double(inner) => json_float(*inner),
         StatValue::Binary(inner) | StatValue::FixedLenBinary(inner) => {
             if logical_type == Some(&LogicalTypeKind::String) {
                 match std::str::from_utf8(inner) {
@@ -422,6 +435,18 @@ fn stat_value_json(value: &StatValue, logical_type: Option<&LogicalTypeKind>) ->
         }
         StatValue::Boolean(inner) => Value::from(*inner),
         StatValue::Int96(inner) => Value::from(inner.as_str()),
+    }
+}
+
+fn json_float(value: f64) -> Value {
+    if value.is_nan() {
+        Value::from("NaN")
+    } else if value == f64::INFINITY {
+        Value::from("Infinity")
+    } else if value == f64::NEG_INFINITY {
+        Value::from("-Infinity")
+    } else {
+        Value::from(value)
     }
 }
 
@@ -469,7 +494,7 @@ mod tests {
         let path = temp_path("jsonl")?;
         let batch = sample_batch()?;
 
-        let mut writer = BatchFileWriter::create_at(&path, &path)?;
+        let mut writer = BatchFileWriter::create_at(&path, &path, &batch.schema())?;
         writer.write(&batch)?;
         writer.finish()?;
 
@@ -485,7 +510,7 @@ mod tests {
         let error_path = temp_path("jsonl")?;
         let batch = sample_batch()?;
 
-        let mut writer = BatchFileWriter::create_at(&write_path, &error_path)?;
+        let mut writer = BatchFileWriter::create_at(&write_path, &error_path, &batch.schema())?;
         writer.write(&batch)?;
         writer.finish()?;
 
@@ -503,5 +528,12 @@ mod tests {
             file_output_format(path),
             Err(ref err) if err.to_string().contains("Unsupported format")
         ));
+    }
+
+    #[test]
+    fn renders_non_finite_json_numbers_explicitly() {
+        assert_eq!(json_float(f64::NAN), Value::from("NaN"));
+        assert_eq!(json_float(f64::INFINITY), Value::from("Infinity"));
+        assert_eq!(json_float(f64::NEG_INFINITY), Value::from("-Infinity"));
     }
 }
