@@ -32,11 +32,15 @@ Until the core is stable, changes should harden existing behavior instead of add
 - Single-file structured output keeps the historical single-file shape.
 - Multi-file structured metadata output includes a `file` field.
 - `head` and `tail` structured output may combine batches only when schemas are compatible.
+- Scan results retain their Arrow schema even when they contain no record batches. Empty CSV scans therefore keep headers, and empty inputs participate in schema validation.
+- Nested Parquet leaves use their full dotted column paths and effective nullability across parent groups.
+- Stats results distinguish complete metadata from unavailable or partial metadata. Unknown counts and bounds are not rendered as authoritative zeroes.
+- Non-finite stats bounds use explicit JSON strings because JSON has no native NaN or infinity values.
 - `count` intentionally prints plain text counts instead of using the structured output system.
 
 ## Safe Write Contract
 
-- Generated output is written to a same-directory temporary file and renamed into place only after the writer successfully finishes.
+- Generated output is written to a same-directory temporary file and renamed into place only after the writer successfully finishes and buffered data is flushed.
 - Temporary paths are internal implementation details and must not determine output format.
 - User-requested output paths determine format inference and user-facing write errors.
 - Failed reads, unsupported formats, schema mismatches, and writer failures must not truncate an existing output file.

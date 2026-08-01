@@ -1,6 +1,6 @@
 use anyhow::Result;
-use arrow::array::{ArrayRef, Int64Array};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::array::{ArrayRef, Int64Array, StructArray};
+use arrow::datatypes::{DataType, Field, Fields, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use std::fs;
@@ -170,6 +170,8 @@ fn column_stats_come_from_public_api() -> Result<()> {
         rows[0].max.as_ref().map(ToString::to_string).as_deref(),
         Some("5")
     );
+    assert_eq!(rows[0].null_count, Some(0));
+    assert!(rows[0].statistics_complete);
 
     Ok(())
 }
@@ -197,9 +199,10 @@ fn binary_stats_display_is_deterministic() {
             physical: parqkit::PhysicalType::ByteArray,
             logical: None,
         },
-        null_count: 0,
+        null_count: Some(0),
         min: None,
         max: None,
+        statistics_complete: true,
     };
     let string_stats = parqkit::ColumnStats {
         column: "name".to_string(),
@@ -207,9 +210,10 @@ fn binary_stats_display_is_deterministic() {
             physical: parqkit::PhysicalType::ByteArray,
             logical: Some(parqkit::LogicalTypeKind::String),
         },
-        null_count: 0,
+        null_count: Some(0),
         min: None,
         max: None,
+        statistics_complete: true,
     };
 
     assert_eq!(
@@ -234,6 +238,35 @@ fn library_api_exposes_typed_schema_results() -> Result<()> {
         parqkit::PhysicalType::Int64
     );
 
+    Ok(())
+}
+
+#[test]
+fn nested_columns_use_full_paths_and_effective_nullability() -> Result<()> {
+    let child_fields = Fields::from(vec![Arc::new(Field::new("child", DataType::Int64, false))]);
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "parent",
+        DataType::Struct(child_fields.clone()),
+        true,
+    )]));
+    let values = StructArray::new(
+        child_fields,
+        vec![Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef],
+        None,
+    );
+    let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(values) as ArrayRef])?;
+    let input = temp_path("nested_columns", "parquet")?;
+    write_parquet(&input, schema, &[batch])?;
+
+    let dataset = parqkit::dataset_from_inputs(vec![input.clone()])?;
+    let schema_results = parqkit::schema(&dataset)?;
+    assert_eq!(schema_results[0].columns[0].name, "parent.child");
+    assert!(schema_results[0].columns[0].nullable);
+
+    let stats_results = parqkit::stats(&dataset, Some("parent.child"))?;
+    assert_eq!(stats_results[0].rows[0].column, "parent.child");
+
+    fs::remove_file(input)?;
     Ok(())
 }
 

@@ -12,11 +12,11 @@ echo ""
 
 # Build release
 echo ">>> Building release binary..."
-cargo build --release --bin parqkit --bin parqkit-generate
+cargo build --release --features stress-tools --bin parqkit --bin parqkit-generate
 echo ""
 
 # Check if fixtures exist
-if [[ ! -d "$SCRIPT_DIR/fixtures" ]] || [[ -z "$(ls -A "$SCRIPT_DIR/fixtures" 2>/dev/null)" ]]; then
+if [[ ! -d "$SCRIPT_DIR/fixtures" ]] || [[ -z "$(fd -t f . "$SCRIPT_DIR/fixtures" --max-results 1 2>/dev/null)" ]]; then
     echo ">>> Fixtures not found. Generating..."
     echo ""
     bash "$SCRIPT_DIR/generate.sh"
@@ -27,14 +27,14 @@ fi
 echo "=============================================="
 echo ">>> Running fast Rust tests..."
 echo "=============================================="
-cargo test --test stress 2>&1 | tail -20
+cargo test --features stress-tools --test stress 2>&1 | tail -20
 echo ""
 
 # Run ignored (heavy) Rust tests
 echo "=============================================="
 echo ">>> Running heavy Rust tests (--ignored)..."
 echo "=============================================="
-cargo test --test stress -- --ignored --test-threads=1 2>&1 | tail -50
+cargo test --features stress-tools --test stress -- --ignored --test-threads=1 2>&1 | tail -50
 echo ""
 
 # Benchmarks

@@ -1,4 +1,5 @@
 use arrow::array::RecordBatch;
+use arrow::datatypes::SchemaRef;
 use parquet::basic::{
     Compression as ParquetCompression, ConvertedType as ParquetConvertedType,
     LogicalType as ParquetLogicalType, TimeUnit as ParquetTimeUnit, Type as ParquetPhysicalType,
@@ -27,6 +28,8 @@ pub struct SchemaResult {
 #[derive(Clone, Debug)]
 pub struct ScanResult {
     pub path: PathBuf,
+    /// Arrow schema for the source, retained even when `batches` is empty.
+    pub schema: SchemaRef,
     pub batches: Vec<RecordBatch>,
 }
 
@@ -83,9 +86,12 @@ impl FileInfo {
 pub struct ColumnStats {
     pub column: String,
     pub column_type: ColumnType,
-    pub null_count: u64,
+    /// Aggregated null count, or `None` when any row group lacks statistics.
+    pub null_count: Option<u64>,
     pub min: Option<StatValue>,
     pub max: Option<StatValue>,
+    /// Whether every row group supplied enough metadata for the reported values.
+    pub statistics_complete: bool,
 }
 
 impl ColumnStats {

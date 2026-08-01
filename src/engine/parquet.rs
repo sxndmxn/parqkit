@@ -2,6 +2,7 @@ use crate::error::{ParqkitError, ResultExt};
 use crate::model::{ColumnInfo, ColumnType, CompressionCodec, CompressionSummary, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
+use arrow::datatypes::SchemaRef;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
@@ -11,12 +12,14 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
 
-pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
+pub fn read_head(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+    let builder = reader_builder(path)?;
+    let schema = Arc::clone(builder.schema());
+
     if rows == 0 {
-        return Ok(Vec::new());
+        return Ok((schema, Vec::new()));
     }
 
-    let builder = reader_builder(path)?;
     let reader = builder
         .with_batch_size(rows.min(1024))
         .build()
@@ -42,18 +45,20 @@ pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
         batches.push(batch);
     }
 
-    Ok(batches)
+    Ok((schema, batches))
 }
 
-pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
+pub fn read_tail(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+    let builder = reader_builder(path)?;
+    let schema = Arc::clone(builder.schema());
+
     if rows == 0 {
-        return Ok(Vec::new());
+        return Ok((schema, Vec::new()));
     }
 
-    let builder = reader_builder(path)?;
     let metadata = Arc::clone(builder.metadata());
     if metadata.num_row_groups() == 0 {
-        return Ok(Vec::new());
+        return Ok((schema, Vec::new()));
     }
 
     let (row_groups, rows_to_skip) = tail_row_groups(path, &metadata, rows)?;
@@ -79,7 +84,7 @@ pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
         skipped = rows_to_skip;
     }
 
-    Ok(result_batches)
+    Ok((schema, result_batches))
 }
 
 pub fn row_count(path: &Path) -> Result<i64> {
@@ -99,9 +104,9 @@ pub fn schema_columns(path: &Path) -> Result<Vec<ColumnInfo>> {
         .columns()
         .iter()
         .map(|column| ColumnInfo {
-            name: column.name().to_string(),
+            name: column.path().string(),
             column_type: ColumnType::from_parquet(column),
-            nullable: column.self_type().is_optional(),
+            nullable: column.max_def_level() > 0,
         })
         .collect())
 }

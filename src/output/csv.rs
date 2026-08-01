@@ -3,9 +3,11 @@
 use crate::Result;
 use arrow::array::RecordBatch;
 use arrow::csv::{Writer, WriterBuilder};
+use arrow::datatypes::SchemaRef;
 use arrow::error::ArrowError;
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 
 pub fn write_batches<W: Write>(
     mut writer: W,
@@ -29,19 +31,31 @@ pub fn write_batches<W: Write>(
 
 pub struct BatchFileWriter {
     writer: Writer<File>,
+    schema: SchemaRef,
+    wrote_batch: bool,
 }
 
 impl BatchFileWriter {
-    pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
+    pub fn create(path: &std::path::Path, schema: SchemaRef) -> std::io::Result<Self> {
         let file = File::create(path)?;
         Ok(Self {
             writer: WriterBuilder::new().with_header(true).build(file),
+            schema,
+            wrote_batch: false,
         })
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {
-        self.writer.write(batch)
+        self.writer.write(batch)?;
+        self.wrote_batch = true;
+        Ok(())
     }
 
-    pub fn finish(&mut self) {}
+    pub fn finish(&mut self) -> std::result::Result<(), ArrowError> {
+        if !self.wrote_batch {
+            self.writer
+                .write(&RecordBatch::new_empty(Arc::clone(&self.schema)))?;
+        }
+        Ok(())
+    }
 }

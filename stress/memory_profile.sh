@@ -62,7 +62,7 @@ if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
 fi
 
 # ============================================================================
-echo "--- TAIL (full scan, higher memory) ---"
+echo "--- TAIL (final row groups only) ---"
 echo ""
 
 if [[ -f "$FIXTURES_DIR/medium_1m.parquet" ]]; then
@@ -91,18 +91,6 @@ echo ""
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     profile_command "Stats on 10M row file" \
         $PARQKIT stats "$FIXTURES_DIR/large_10m.parquet"
-fi
-
-# ============================================================================
-echo "--- QUERY (DataFusion memory) ---"
-echo ""
-
-if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
-    profile_command "Simple aggregation on 10M rows" \
-        $PARQKIT count "$FIXTURES_DIR/large_10m.parquet"
-
-    profile_command "Group by on 10M rows" \
-        $PARQKIT tail -n 1000 "$FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================

@@ -15,25 +15,44 @@ pub fn column_stats(path: &Path, column_name: Option<&str>) -> Result<Vec<Column
         .map(|index| {
             let column = schema.column(index);
             AccumulatedColumnStats {
-                column: column.name().to_string(),
+                column: column.path().string(),
                 column_type: ColumnType::from_parquet(&column),
-                null_count: 0,
+                null_count: Some(0),
                 min: None,
                 max: None,
+                bounds_complete: true,
             }
         })
         .collect();
 
     for row_group_index in 0..metadata.num_row_groups() {
         let row_group = metadata.row_group(row_group_index);
+        let row_group_rows = u64::try_from(row_group.num_rows()).map_err(|_| {
+            ParqkitError::invalid_metadata(
+                path,
+                format!("row group {row_group_index} has a negative row count"),
+            )
+        })?;
         for (column_index, stats) in column_stats
             .iter_mut()
             .enumerate()
             .take(row_group.num_columns())
         {
             if let Some(column_statistics) = row_group.column(column_index).statistics() {
-                stats.null_count += column_statistics.null_count_opt().unwrap_or(0);
-                update_min_max(stats, column_statistics);
+                stats.add_null_count(path, column_statistics.null_count_opt())?;
+
+                if column_statistics.min_bytes_opt().is_some()
+                    && column_statistics.max_bytes_opt().is_some()
+                    && column_statistics.min_is_exact()
+                    && column_statistics.max_is_exact()
+                {
+                    update_min_max(stats, column_statistics);
+                } else if column_statistics.null_count_opt() != Some(row_group_rows) {
+                    stats.bounds_complete = false;
+                }
+            } else {
+                stats.null_count = None;
+                stats.bounds_complete = false;
             }
         }
     }
@@ -54,19 +73,39 @@ pub fn column_stats(path: &Path, column_name: Option<&str>) -> Result<Vec<Column
 struct AccumulatedColumnStats {
     column: String,
     column_type: ColumnType,
-    null_count: u64,
+    null_count: Option<u64>,
     min: Option<StatValue>,
     max: Option<StatValue>,
+    bounds_complete: bool,
 }
 
 impl AccumulatedColumnStats {
+    fn add_null_count(&mut self, path: &Path, candidate: Option<u64>) -> Result<()> {
+        self.null_count = match (self.null_count, candidate) {
+            (Some(current), Some(candidate)) => {
+                Some(current.checked_add(candidate).ok_or_else(|| {
+                    ParqkitError::invalid_metadata(
+                        path,
+                        format!("null count overflow for column {}", self.column),
+                    )
+                })?)
+            }
+            _ => None,
+        };
+        Ok(())
+    }
+
     fn into_row(self) -> ColumnStats {
+        let statistics_complete = self.null_count.is_some() && self.bounds_complete;
+        let min = if self.bounds_complete { self.min } else { None };
+        let max = if self.bounds_complete { self.max } else { None };
         ColumnStats {
             column: self.column,
             column_type: self.column_type,
             null_count: self.null_count,
-            min: self.min,
-            max: self.max,
+            min,
+            max,
+            statistics_complete,
         }
     }
 }
