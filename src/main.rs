@@ -1,4 +1,4 @@
-use pq::Result;
+use parqkit::Result;
 
 fn main() {
     if let Err(err) = run() {
@@ -8,5 +8,5 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    pq::run_cli()
+    parqkit::run_cli()
 }

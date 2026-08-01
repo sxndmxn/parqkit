@@ -7,7 +7,7 @@ use thiserror::Error;
 
 /// User-facing error with context
 #[derive(Debug, Error)]
-pub enum PqError {
+pub enum ParqkitError {
     #[error("No input files specified")]
     NoInputFiles,
 
@@ -63,7 +63,7 @@ pub enum PqError {
     InvalidMetadata { path: String, details: String },
 }
 
-impl PqError {
+impl ParqkitError {
     /// Create a file-not-found error with path context
     pub fn file_not_found(path: &Path) -> Self {
         Self::FileNotFound {
@@ -172,19 +172,19 @@ impl PqError {
     }
 }
 
-impl From<io::Error> for PqError {
+impl From<io::Error> for ParqkitError {
     fn from(error: io::Error) -> Self {
         Self::output_error(error)
     }
 }
 
-impl From<serde_json::Error> for PqError {
+impl From<serde_json::Error> for ParqkitError {
     fn from(error: serde_json::Error) -> Self {
         Self::output_error(error)
     }
 }
 
-impl From<ArrowError> for PqError {
+impl From<ArrowError> for ParqkitError {
     fn from(error: ArrowError) -> Self {
         Self::output_error(error)
     }
@@ -214,12 +214,12 @@ fn simplify_parquet_error(msg: &str) -> String {
 /// Extension trait for adding path context to Results
 pub trait ResultExt<T> {
     /// Add path context to an error, converting it to a user-friendly message
-    fn with_path_context(self, path: &Path) -> Result<T, PqError>;
+    fn with_path_context(self, path: &Path) -> Result<T, ParqkitError>;
 }
 
 impl<T, E: std::fmt::Display> ResultExt<T> for Result<T, E> {
-    fn with_path_context(self, path: &Path) -> Result<T, PqError> {
-        self.map_err(|error| PqError::from_read(path, error))
+    fn with_path_context(self, path: &Path) -> Result<T, ParqkitError> {
+        self.map_err(|error| ParqkitError::from_read(path, error))
     }
 }
 
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = PqError::file_not_found(Path::new("/tmp/missing.parquet"));
+        let err = ParqkitError::file_not_found(Path::new("/tmp/missing.parquet"));
         assert!(err.to_string().contains("missing.parquet"));
         assert!(err.to_string().contains("not found"));
     }
@@ -248,13 +248,14 @@ mod tests {
 
     #[test]
     fn test_from_read_classifies_invalid_parquet() {
-        let err = PqError::from_read(Path::new("/tmp/invalid.parquet"), "Invalid thrift footer");
-        assert!(matches!(err, PqError::InvalidParquet { .. }));
+        let err =
+            ParqkitError::from_read(Path::new("/tmp/invalid.parquet"), "Invalid thrift footer");
+        assert!(matches!(err, ParqkitError::InvalidParquet { .. }));
     }
 
     #[test]
     fn test_from_read_classifies_corruption() {
-        let err = PqError::from_read(Path::new("/tmp/truncated.parquet"), "unexpected EOF");
-        assert!(matches!(err, PqError::CorruptedFile { .. }));
+        let err = ParqkitError::from_read(Path::new("/tmp/truncated.parquet"), "unexpected EOF");
+        assert!(matches!(err, ParqkitError::CorruptedFile { .. }));
     }
 }

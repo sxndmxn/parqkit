@@ -4,11 +4,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-PQ="./target/release/pq"
+PARQKIT="./target/release/parqkit"
 ITERATIONS=${1:-1000}
 
-if [[ ! -f "$PQ" ]]; then
-    echo "Building pq in release mode..."
+if [[ ! -f "$PARQKIT" ]]; then
+    echo "Building Parqkit in release mode..."
     cargo build --release
 fi
 
@@ -58,10 +58,10 @@ for i in $(seq 1 $ITERATIONS); do
     # Build command
     case $CMD in
         head|tail)
-            FULL_CMD="$PQ $CMD -n $ROWS \"$FILE\" -o $FMT"
+            FULL_CMD="$PARQKIT $CMD -n $ROWS \"$FILE\" -o $FMT"
             ;;
         *)
-            FULL_CMD="$PQ $CMD \"$FILE\" -o $FMT"
+            FULL_CMD="$PARQKIT $CMD \"$FILE\" -o $FMT"
             ;;
     esac
 

@@ -1,4 +1,4 @@
-# pq - Fast Parquet CLI
+# Parqkit — Fast Parquet CLI
 
 A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults.
 
@@ -11,7 +11,7 @@ cargo install --path .
 ## Usage
 
 ```
-pq <COMMAND> [OPTIONS] <FILE>
+parqkit <COMMAND> [OPTIONS] <FILE>
 
 Commands:
   schema    Show schema (column names, types, nullability)
@@ -36,7 +36,7 @@ Commands:
 ### View schema
 
 ```bash
-$ pq schema data.parquet
+$ parqkit schema data.parquet
 +--------+------------+----------+
 | Column | Type       | Nullable |
 +================================+
@@ -49,7 +49,7 @@ $ pq schema data.parquet
 ### Preview data
 
 ```bash
-$ pq head data.parquet -n 5
+$ parqkit head data.parquet -n 5
 +----+---------+--------+
 | id | name    | amount |
 +=========================+
@@ -58,16 +58,16 @@ $ pq head data.parquet -n 5
 | 3  | Charlie | 150.25 |
 +----+---------+--------+
 
-$ pq tail data.parquet -n 2
+$ parqkit tail data.parquet -n 2
 ```
 
 ### Count rows
 
 ```bash
-$ pq count data.parquet
+$ parqkit count data.parquet
 1000000
 
-$ pq count *.parquet
+$ parqkit count *.parquet
 part1.parquet: 500000
 part2.parquet: 500000
 Total: 1000000
@@ -76,7 +76,7 @@ Total: 1000000
 ### Column statistics
 
 ```bash
-$ pq stats data.parquet
+$ parqkit stats data.parquet
 +--------+--------+-------+-------+------+
 | Column | Type   | Nulls | Min   | Max  |
 +==========================================+
@@ -88,7 +88,7 @@ $ pq stats data.parquet
 ### File info
 
 ```bash
-$ pq info data.parquet
+$ parqkit info data.parquet
 +-------------+----------------------------------+
 | Key         | Value                            |
 +================================================+
@@ -104,15 +104,15 @@ $ pq info data.parquet
 ### Convert formats
 
 ```bash
-$ pq convert data.parquet output.csv
-$ pq convert data.parquet output.json
-$ pq convert data.parquet output.jsonl
+$ parqkit convert data.parquet output.csv
+$ parqkit convert data.parquet output.json
+$ parqkit convert data.parquet output.jsonl
 ```
 
 ### Merge files
 
 ```bash
-$ pq merge part1.parquet part2.parquet -o combined.parquet
+$ parqkit merge part1.parquet part2.parquet -o combined.parquet
 ```
 
 ### Output formats
@@ -120,11 +120,11 @@ $ pq merge part1.parquet part2.parquet -o combined.parquet
 Read-oriented commands support multiple output formats:
 
 ```bash
-$ pq head data.parquet --output table   # Pretty table (default)
-$ pq head data.parquet --output json    # JSON array
-$ pq head data.parquet --output jsonl   # JSON Lines
-$ pq head data.parquet --output csv     # CSV
-$ pq schema data.parquet --output jsonl # One JSON object per schema column
+$ parqkit head data.parquet --output table   # Pretty table (default)
+$ parqkit head data.parquet --output json    # JSON array
+$ parqkit head data.parquet --output jsonl   # JSON Lines
+$ parqkit head data.parquet --output csv     # CSV
+$ parqkit schema data.parquet --output jsonl # One JSON object per schema column
 ```
 
 Schema and stats JSON output include display type plus explicit physical/logical type
@@ -136,8 +136,8 @@ types, and renders physical binary values as deterministic hexadecimal strings.
 ### Glob support
 
 ```bash
-$ pq count data/*.parquet
-$ pq schema *.parquet
+$ parqkit count data/*.parquet
+$ parqkit schema *.parquet
 ```
 
 ## Features

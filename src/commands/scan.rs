@@ -3,7 +3,7 @@
 use crate::api;
 use crate::cli::args::{HeadArgs, TailArgs};
 use crate::dataset::Dataset;
-use crate::{commands, output, PqError, Result, ScanKind, ScanOptions, ScanResult};
+use crate::{commands, output, ParqkitError, Result, ScanKind, ScanOptions, ScanResult};
 use arrow::datatypes::SchemaRef;
 use std::path::PathBuf;
 
@@ -62,7 +62,7 @@ fn validate_compatible_schemas(results: &[ScanResult]) -> Result<()> {
             let schema = batch.schema();
             if let Some((first_path, expected_schema)) = &first_schema {
                 if schema.as_ref() != expected_schema.as_ref() {
-                    return Err(PqError::SchemaMismatch {
+                    return Err(ParqkitError::SchemaMismatch {
                         file1: first_path.display().to_string(),
                         file2: result.path.display().to_string(),
                         details: "Cannot combine scan results with different schemas for structured output"

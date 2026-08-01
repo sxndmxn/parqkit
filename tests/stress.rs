@@ -1,4 +1,4 @@
-//! Stress tests for pq
+//! Stress tests for Parqkit
 //!
 //! Run all tests: cargo test --test stress
 //! Run ignored (heavy) tests: cargo test --test stress -- --ignored --test-threads=1
@@ -25,8 +25,8 @@ fn fixtures_dir() -> &'static PathBuf {
     })
 }
 
-fn pq_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_pq"))
+fn parqkit_bin() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_parqkit"))
 }
 
 fn generate_bin() -> PathBuf {
@@ -38,21 +38,21 @@ fn generate_bin() -> PathBuf {
         } else {
             "release"
         })
-        .join("pq-generate")
+        .join("parqkit-generate")
 }
 
-fn run_pq(args: &[&str]) -> Output {
-    Command::new(pq_bin())
+fn run_parqkit(args: &[&str]) -> Output {
+    Command::new(parqkit_bin())
         .args(args)
         .output()
-        .expect("Failed to execute pq")
+        .expect("Failed to execute parqkit")
 }
 
-fn run_pq_success(args: &[&str]) -> String {
-    let output = run_pq(args);
+fn run_parqkit_success(args: &[&str]) -> String {
+    let output = run_parqkit(args);
     if !output.status.success() {
         panic!(
-            "pq failed with args {:?}\nstderr: {}",
+            "parqkit failed with args {:?}\nstderr: {}",
             args,
             String::from_utf8_lossy(&output.stderr)
         );
@@ -60,11 +60,11 @@ fn run_pq_success(args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-fn run_pq_failure(args: &[&str]) -> String {
-    let output = run_pq(args);
+fn run_parqkit_failure(args: &[&str]) -> String {
+    let output = run_parqkit(args);
     assert!(
         !output.status.success(),
-        "Expected pq to fail with args {:?}",
+        "Expected parqkit to fail with args {:?}",
         args
     );
     String::from_utf8_lossy(&output.stderr).to_string()
@@ -82,11 +82,11 @@ fn generate_fixture(name: &str, args: &[&str]) -> PathBuf {
     let output = Command::new(generate_bin())
         .args(&cmd_args)
         .output()
-        .expect("Failed to execute pq-generate");
+        .expect("Failed to execute parqkit-generate");
 
     if !output.status.success() {
         panic!(
-            "pq-generate failed: {}",
+            "parqkit-generate failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
@@ -100,7 +100,7 @@ fn generate_fixture(name: &str, args: &[&str]) -> PathBuf {
 
 #[test]
 fn edge_nonexistent_file() {
-    let stderr = run_pq_failure(&["head", "this_file_does_not_exist.parquet"]);
+    let stderr = run_parqkit_failure(&["head", "this_file_does_not_exist.parquet"]);
     assert!(
         stderr.contains("not found")
             || stderr.contains("No such file")
@@ -113,7 +113,7 @@ fn edge_nonexistent_file() {
 
 #[test]
 fn edge_not_parquet_file() {
-    let stderr = run_pq_failure(&["head", "Cargo.toml"]);
+    let stderr = run_parqkit_failure(&["head", "Cargo.toml"]);
     assert!(
         stderr.contains("Parquet")
             || stderr.contains("magic")
@@ -126,13 +126,13 @@ fn edge_not_parquet_file() {
 
 #[test]
 fn edge_empty_path() {
-    let stderr = run_pq_failure(&["head", ""]);
+    let stderr = run_parqkit_failure(&["head", ""]);
     assert!(!stderr.is_empty(), "Should have error for empty path");
 }
 
 #[test]
 fn edge_directory_as_file() {
-    let stderr = run_pq_failure(&["head", "src/"]);
+    let stderr = run_parqkit_failure(&["head", "src/"]);
     assert!(
         stderr.contains("directory")
             || stderr.contains("Is a directory")
@@ -153,7 +153,7 @@ fn edge_truncated_file() {
         .expect("Failed to write garbage");
     drop(file);
 
-    let stderr = run_pq_failure(&["head", path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", path.to_str().unwrap()]);
     assert!(
         stderr.contains("error") || stderr.contains("invalid") || stderr.contains("corrupt"),
         "Expected error for truncated file, got: {}",
@@ -166,7 +166,7 @@ fn edge_zero_byte_file() {
     let path = fixtures_dir().join("zero_byte.parquet");
     File::create(&path).expect("Failed to create zero byte file");
 
-    let stderr = run_pq_failure(&["head", path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", path.to_str().unwrap()]);
     assert!(!stderr.is_empty(), "Should have error for zero byte file");
 }
 
@@ -184,7 +184,7 @@ fn edge_wrong_magic_bytes() {
     file.write_all(b"FAKE").expect("Failed to write footer");
     drop(file);
 
-    let stderr = run_pq_failure(&["head", path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", path.to_str().unwrap()]);
     assert!(
         stderr.to_lowercase().contains("parquet")
             || stderr.to_lowercase().contains("magic")
@@ -216,7 +216,7 @@ fn edge_bit_flipped_file() {
 
     fs::write(&corrupted_path, &data).expect("Failed to write corrupted file");
 
-    let stderr = run_pq_failure(&["head", corrupted_path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", corrupted_path.to_str().unwrap()]);
     assert!(!stderr.is_empty(), "Should have error for bit-flipped file");
 }
 
@@ -236,7 +236,7 @@ fn edge_truncated_at_metadata() {
     let truncate_point = data.len() / 2;
     fs::write(&truncated_path, &data[..truncate_point]).expect("Failed to write truncated file");
 
-    let stderr = run_pq_failure(&["head", truncated_path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", truncated_path.to_str().unwrap()]);
     assert!(
         stderr.to_lowercase().contains("error")
             || stderr.to_lowercase().contains("truncat")
@@ -269,7 +269,7 @@ fn edge_random_bytes_file() {
 
     fs::write(&path, &data).expect("Failed to write random file");
 
-    let stderr = run_pq_failure(&["head", path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", path.to_str().unwrap()]);
     assert!(
         !stderr.is_empty(),
         "Should have error for random bytes file"
@@ -297,7 +297,7 @@ fn edge_valid_magic_invalid_content() {
         .expect("Failed to write footer magic");
     drop(file);
 
-    let stderr = run_pq_failure(&["head", path.to_str().unwrap()]);
+    let stderr = run_parqkit_failure(&["head", path.to_str().unwrap()]);
     assert!(
         !stderr.is_empty(),
         "Should have error for file with valid magic but invalid content"
@@ -365,12 +365,12 @@ fn chaos_random_corruption() {
 
         fs::write(&corrupted_path, &corrupted).expect("Failed to write corrupted file");
 
-        // Run pq and ensure it doesn't panic (exit code doesn't matter)
-        let output = run_pq(&["head", corrupted_path.to_str().unwrap()]);
+        // Run parqkit and ensure it doesn't panic (exit code doesn't matter)
+        let output = run_parqkit(&["head", corrupted_path.to_str().unwrap()]);
         // Either succeeds (unlikely) or fails gracefully
         assert!(
             output.status.success() || !output.stderr.is_empty() || output.status.code().is_some(),
-            "pq should not crash/panic on corrupted file iteration {}",
+            "parqkit should not crash/panic on corrupted file iteration {}",
             i
         );
 
@@ -381,7 +381,7 @@ fn chaos_random_corruption() {
 
 #[test]
 fn edge_glob_no_matches() {
-    let stderr = run_pq_failure(&["count", "nonexistent_pattern_*.parquet"]);
+    let stderr = run_parqkit_failure(&["count", "nonexistent_pattern_*.parquet"]);
     assert!(
         stderr.contains("no files")
             || stderr.contains("No files")
@@ -403,10 +403,10 @@ fn empty_parquet_file() {
         &["--rows", "0", "--cols", "5", "--profile", "empty"],
     );
 
-    let output = run_pq_success(&["count", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", path.to_str().unwrap()]);
     assert!(output.contains("0"), "Empty file should have 0 rows");
 
-    let output = run_pq_success(&["schema", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["schema", path.to_str().unwrap()]);
     assert!(
         !output.is_empty(),
         "Schema should be displayable for empty file"
@@ -426,7 +426,8 @@ fn unicode_stress() {
 
     // Test all output formats handle Unicode
     for format in &["table", "json", "jsonl", "csv"] {
-        let output = run_pq_success(&["head", "-n", "100", path.to_str().unwrap(), "-o", format]);
+        let output =
+            run_parqkit_success(&["head", "-n", "100", path.to_str().unwrap(), "-o", format]);
         assert!(
             !output.is_empty(),
             "Unicode output failed for format {}",
@@ -442,7 +443,7 @@ fn csv_special_chars() {
         &["--rows", "100", "--cols", "3", "--profile", "unicode"],
     );
 
-    let output = run_pq_success(&["head", path.to_str().unwrap(), "-o", "csv"]);
+    let output = run_parqkit_success(&["head", path.to_str().unwrap(), "-o", "csv"]);
     // CSV should handle special characters without breaking
     let lines: Vec<&str> = output.lines().collect();
     assert!(lines.len() > 1, "Should have header + data rows");
@@ -459,10 +460,10 @@ fn sparse_data_90_percent_nulls() {
         &["--rows", "10000", "--cols", "10", "--profile", "sparse"],
     );
 
-    let output = run_pq_success(&["stats", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["stats", path.to_str().unwrap()]);
     assert!(!output.is_empty(), "Stats should work on sparse data");
 
-    let output = run_pq_success(&["head", "-n", "100", path.to_str().unwrap(), "-o", "json"]);
+    let output = run_parqkit_success(&["head", "-n", "100", path.to_str().unwrap(), "-o", "json"]);
     // JSON should handle many nulls
     assert!(
         output.contains("null"),
@@ -481,7 +482,7 @@ fn long_strings_1kb() {
         &["--rows", "100", "--cols", "3", "--profile", "long-strings"],
     );
 
-    let output = run_pq_success(&["head", "-n", "1", path.to_str().unwrap(), "-o", "json"]);
+    let output = run_parqkit_success(&["head", "-n", "1", path.to_str().unwrap(), "-o", "json"]);
     assert!(
         output.len() > 1000,
         "Long string output should be large, got {} bytes",
@@ -501,10 +502,10 @@ fn edge_case_values() {
     );
 
     // Should handle MIN/MAX int64, special floats (NaN, Inf)
-    let output = run_pq_success(&["head", "-n", "100", path.to_str().unwrap(), "-o", "json"]);
+    let output = run_parqkit_success(&["head", "-n", "100", path.to_str().unwrap(), "-o", "json"]);
     assert!(!output.is_empty());
 
-    let output = run_pq_success(&["stats", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["stats", path.to_str().unwrap()]);
     assert!(!output.is_empty());
 }
 
@@ -519,10 +520,10 @@ fn all_nulls_column() {
         &["--rows", "100", "--cols", "5", "--profile", "all-nulls"],
     );
 
-    let output = run_pq_success(&["head", path.to_str().unwrap(), "-o", "json"]);
+    let output = run_parqkit_success(&["head", path.to_str().unwrap(), "-o", "json"]);
     assert!(output.contains("null"), "All-null file should show nulls");
 
-    let output = run_pq_success(&["stats", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["stats", path.to_str().unwrap()]);
     assert!(!output.is_empty());
 }
 
@@ -537,11 +538,11 @@ fn wide_schema_100_columns() {
         &["--rows", "1000", "--cols", "100", "--profile", "mixed"],
     );
 
-    let output = run_pq_success(&["schema", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["schema", path.to_str().unwrap()]);
     let lines: Vec<&str> = output.lines().collect();
     assert!(lines.len() >= 100, "Should show 100+ column definitions");
 
-    let output = run_pq_success(&["head", "-n", "10", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["head", "-n", "10", path.to_str().unwrap()]);
     assert!(!output.is_empty());
 }
 
@@ -554,7 +555,7 @@ fn wide_schema_1000_columns() {
     );
 
     let start = Instant::now();
-    let output = run_pq_success(&["schema", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["schema", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
 
     assert!(
@@ -578,11 +579,11 @@ fn medium_load_1m_rows() {
     );
 
     // Warmup run to avoid cold-start overhead
-    let _ = run_pq_success(&["count", path.to_str().unwrap()]);
+    let _ = run_parqkit_success(&["count", path.to_str().unwrap()]);
 
     // Count should be near-instant (metadata only)
     let start = Instant::now();
-    let output = run_pq_success(&["count", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(output.contains("1000000"));
     assert!(
@@ -593,7 +594,7 @@ fn medium_load_1m_rows() {
 
     // Head should be fast (streaming)
     let start = Instant::now();
-    let output = run_pq_success(&["head", "-n", "100", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["head", "-n", "100", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(
         elapsed < Duration::from_secs(2),
@@ -604,7 +605,7 @@ fn medium_load_1m_rows() {
 
     // Stats should complete reasonably
     let start = Instant::now();
-    let _output = run_pq_success(&["stats", path.to_str().unwrap()]);
+    let _output = run_parqkit_success(&["stats", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(
         elapsed < Duration::from_secs(30),
@@ -622,7 +623,7 @@ fn medium_load_tail_1m_rows() {
     );
 
     // Tail must scan entire file
-    let output = run_pq_success(&["tail", "-n", "10", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["tail", "-n", "10", path.to_str().unwrap()]);
     let lines: Vec<&str> = output.lines().collect();
     assert!(lines.len() >= 10, "Should have at least 10 lines");
 }
@@ -641,7 +642,7 @@ fn large_load_10m_rows() {
 
     // Count should still be instant
     let start = Instant::now();
-    let output = run_pq_success(&["count", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(output.contains("10000000"));
     assert!(
@@ -652,7 +653,7 @@ fn large_load_10m_rows() {
 
     // Head should still be fast
     let start = Instant::now();
-    let _output = run_pq_success(&["head", "-n", "1000", path.to_str().unwrap()]);
+    let _output = run_parqkit_success(&["head", "-n", "1000", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(
         elapsed < Duration::from_secs(3),
@@ -670,7 +671,7 @@ fn large_load_tail_10m_rows() {
     );
 
     // Tail on 10M rows - will be slow but should not OOM
-    let output = run_pq_success(&["tail", "-n", "10", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["tail", "-n", "10", path.to_str().unwrap()]);
     let lines: Vec<&str> = output.lines().collect();
     assert!(lines.len() >= 10);
 }
@@ -698,7 +699,7 @@ fn extreme_load_100m_rows() {
 
     // Count must still be instant (metadata only)
     let start = Instant::now();
-    let output = run_pq_success(&["count", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(output.contains("100000000"));
     assert!(
@@ -709,7 +710,7 @@ fn extreme_load_100m_rows() {
 
     // Head should still be fast
     let start = Instant::now();
-    let _output = run_pq_success(&["head", "-n", "100", path.to_str().unwrap()]);
+    let _output = run_parqkit_success(&["head", "-n", "100", path.to_str().unwrap()]);
     let elapsed = start.elapsed();
     assert!(
         elapsed < Duration::from_secs(5),
@@ -735,10 +736,10 @@ fn concurrent_reads_same_file() {
         .map(|i| {
             let p = path_str.clone();
             thread::spawn(move || {
-                let output = Command::new(pq_bin())
+                let output = Command::new(parqkit_bin())
                     .args(["head", "-n", "1000", &p])
                     .output()
-                    .expect("Failed to execute pq");
+                    .expect("Failed to execute parqkit");
                 (i, output.status.success(), output.stdout.len())
             })
         })
@@ -761,7 +762,7 @@ fn rapid_sequential_invocations() {
 
     let start = Instant::now();
     for i in 0..100 {
-        let output = run_pq_success(&["count", path.to_str().unwrap()]);
+        let output = run_parqkit_success(&["count", path.to_str().unwrap()]);
         assert!(output.contains("1000000"), "Invocation {} failed", i);
     }
     let elapsed = start.elapsed();
@@ -787,7 +788,7 @@ fn count_large() {
         &["--rows", "10000000", "--cols", "20", "--profile", "mixed"],
     );
 
-    let output = run_pq_success(&["count", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", path.to_str().unwrap()]);
     assert!(output.contains("10000000"));
 }
 
@@ -799,7 +800,7 @@ fn tail_large() {
         &["--rows", "10000000", "--cols", "20", "--profile", "mixed"],
     );
 
-    let output = run_pq_success(&["tail", "-n", "100", path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["tail", "-n", "100", path.to_str().unwrap()]);
     assert!(!output.is_empty());
 }
 
@@ -816,7 +817,8 @@ fn output_json_large() {
     );
 
     // Generate 100k rows as JSON
-    let output = run_pq_success(&["head", "-n", "100000", path.to_str().unwrap(), "-o", "json"]);
+    let output =
+        run_parqkit_success(&["head", "-n", "100000", path.to_str().unwrap(), "-o", "json"]);
 
     // Should be valid JSON array
     assert!(output.starts_with('['));
@@ -831,7 +833,8 @@ fn output_csv_large() {
         &["--rows", "1000000", "--cols", "10", "--profile", "mixed"],
     );
 
-    let output = run_pq_success(&["head", "-n", "100000", path.to_str().unwrap(), "-o", "csv"]);
+    let output =
+        run_parqkit_success(&["head", "-n", "100000", path.to_str().unwrap(), "-o", "csv"]);
     let lines: Vec<&str> = output.lines().collect();
     assert_eq!(lines.len(), 100001, "Should have header + 100k rows");
 }
@@ -874,10 +877,10 @@ fn merge_many_files() {
     args.push("-o");
     args.push(output_path.to_str().unwrap());
 
-    let _ = run_pq_success(&args);
+    let _ = run_parqkit_success(&args);
 
     // Verify merged file
-    let output = run_pq_success(&["count", output_path.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", output_path.to_str().unwrap()]);
     assert!(
         output.contains("1000000"),
         "Merged file should have 100 * 10000 = 1M rows"
@@ -909,7 +912,7 @@ fn glob_many_files() {
     }
 
     let glob_pattern = fixtures_dir().join("merge_part_*.parquet");
-    let output = run_pq_success(&["count", glob_pattern.to_str().unwrap()]);
+    let output = run_parqkit_success(&["count", glob_pattern.to_str().unwrap()]);
 
     // Should aggregate counts from all matched files
     assert!(!output.is_empty());

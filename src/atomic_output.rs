@@ -1,4 +1,4 @@
-use crate::{PqError, Result};
+use crate::{ParqkitError, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -15,7 +15,7 @@ pub(crate) struct PendingOutput {
 impl PendingOutput {
     pub fn new(target_path: &Path) -> Result<Self> {
         let file_name = target_path.file_name().ok_or_else(|| {
-            PqError::write_error(target_path, "output path must include a file name")
+            ParqkitError::write_error(target_path, "output path must include a file name")
         })?;
         let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
         let counter = TEMP_OUTPUT_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -39,7 +39,7 @@ impl PendingOutput {
 
     pub fn commit(mut self) -> Result<()> {
         fs::rename(&self.temp_path, &self.target_path)
-            .map_err(|error| PqError::write_error(&self.target_path, error))?;
+            .map_err(|error| ParqkitError::write_error(&self.target_path, error))?;
         self.committed = true;
         Ok(())
     }
@@ -64,10 +64,10 @@ mod tests {
     fn temp_path(extension: &str) -> Result<PathBuf> {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(PqError::output_error)?
+            .map_err(ParqkitError::output_error)?
             .as_nanos();
         let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        Ok(std::env::temp_dir().join(format!("pq_output_{unique}_{counter}.{extension}")))
+        Ok(std::env::temp_dir().join(format!("parqkit_output_{unique}_{counter}.{extension}")))
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
             .path()
             .file_name()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| PqError::output_error("temp path should have a file name"))?;
+            .ok_or_else(|| ParqkitError::output_error("temp path should have a file name"))?;
 
         assert!(!temp_file_name.ends_with(".jsonl"));
         Ok(())

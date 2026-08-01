@@ -4,12 +4,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-GENERATE="cargo run --release --bin pq-generate --"
+GENERATE="cargo run --release --bin parqkit-generate --"
 
 mkdir -p "$FIXTURES_DIR"
 
-echo "Building pq-generate..."
-cargo build --release --bin pq-generate
+echo "Building parqkit-generate..."
+cargo build --release --bin parqkit-generate
 
 echo ""
 echo "=== Generating stress test fixtures ==="

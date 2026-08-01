@@ -1,16 +1,16 @@
 #!/bin/bash
-# Memory profiling for pq commands
+# Memory profiling for Parqkit commands
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-PQ="./target/release/pq"
+PARQKIT="./target/release/parqkit"
 RESULTS_DIR="$SCRIPT_DIR/results"
 
 mkdir -p "$RESULTS_DIR"
 
-if [[ ! -f "$PQ" ]]; then
-    echo "Building pq in release mode..."
+if [[ ! -f "$PARQKIT" ]]; then
+    echo "Building Parqkit in release mode..."
     cargo build --release
 fi
 
@@ -55,10 +55,10 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
     profile_command "Head 10 rows from 100M row file" \
-        $PQ head -n 10 "$FIXTURES_DIR/huge_100m.parquet"
+        $PARQKIT head -n 10 "$FIXTURES_DIR/huge_100m.parquet"
 
     profile_command "Head 10000 rows from 100M row file" \
-        $PQ head -n 10000 "$FIXTURES_DIR/huge_100m.parquet"
+        $PARQKIT head -n 10000 "$FIXTURES_DIR/huge_100m.parquet"
 fi
 
 # ============================================================================
@@ -67,12 +67,12 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/medium_1m.parquet" ]]; then
     profile_command "Tail 10 rows from 1M row file" \
-        $PQ tail -n 10 "$FIXTURES_DIR/medium_1m.parquet"
+        $PARQKIT tail -n 10 "$FIXTURES_DIR/medium_1m.parquet"
 fi
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     profile_command "Tail 10 rows from 10M row file" \
-        $PQ tail -n 10 "$FIXTURES_DIR/large_10m.parquet"
+        $PARQKIT tail -n 10 "$FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================
@@ -81,7 +81,7 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
     profile_command "Count 100M row file" \
-        $PQ count "$FIXTURES_DIR/huge_100m.parquet"
+        $PARQKIT count "$FIXTURES_DIR/huge_100m.parquet"
 fi
 
 # ============================================================================
@@ -90,7 +90,7 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     profile_command "Stats on 10M row file" \
-        $PQ stats "$FIXTURES_DIR/large_10m.parquet"
+        $PARQKIT stats "$FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================
@@ -99,10 +99,10 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     profile_command "Simple aggregation on 10M rows" \
-        $PQ count "$FIXTURES_DIR/large_10m.parquet"
+        $PARQKIT count "$FIXTURES_DIR/large_10m.parquet"
 
     profile_command "Group by on 10M rows" \
-        $PQ tail -n 1000 "$FIXTURES_DIR/large_10m.parquet"
+        $PARQKIT tail -n 1000 "$FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================
@@ -111,7 +111,7 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/medium_1m.parquet" ]]; then
     profile_command "JSON output 100K rows" \
-        $PQ head -n 100000 "$FIXTURES_DIR/medium_1m.parquet" -o json
+        $PARQKIT head -n 100000 "$FIXTURES_DIR/medium_1m.parquet" -o json
 fi
 
 # ============================================================================
@@ -120,10 +120,10 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/wide_1000col.parquet" ]]; then
     profile_command "Head from 1000-column file" \
-        $PQ head -n 100 "$FIXTURES_DIR/wide_1000col.parquet"
+        $PARQKIT head -n 100 "$FIXTURES_DIR/wide_1000col.parquet"
 
     profile_command "Schema of 1000-column file" \
-        $PQ schema "$FIXTURES_DIR/wide_1000col.parquet"
+        $PARQKIT schema "$FIXTURES_DIR/wide_1000col.parquet"
 fi
 
 echo "=== Memory profiling complete ==="

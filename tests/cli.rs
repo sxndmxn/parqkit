@@ -1,4 +1,4 @@
-//! CLI integration tests for pq
+//! CLI integration tests for Parqkit
 
 use anyhow::Result;
 use arrow::array::{ArrayRef, BooleanArray, Int64Array, StringArray};
@@ -15,8 +15,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn pq() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_pq"))
+fn parqkit() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_parqkit"))
 }
 
 fn fixture_path() -> String {
@@ -29,7 +29,7 @@ fn temp_path(name: &str, extension: &str) -> Result<PathBuf> {
         .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
         .as_nanos();
     let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    Ok(std::env::temp_dir().join(format!("pq_{name}_{unique}_{counter}.{extension}")))
+    Ok(std::env::temp_dir().join(format!("parqkit_{name}_{unique}_{counter}.{extension}")))
 }
 
 fn write_parquet(
@@ -59,10 +59,10 @@ fn assert_no_source_headers(output: &[u8]) {
 
 #[test]
 fn test_help() -> Result<()> {
-    let output = pq().arg("--help").output()?;
+    let output = parqkit().arg("--help").output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("pq"));
+    assert!(stdout.contains("parqkit"));
     assert!(stdout.contains("schema"));
     assert!(stdout.contains("head"));
     assert!(stdout.contains("stats"));
@@ -71,16 +71,16 @@ fn test_help() -> Result<()> {
 
 #[test]
 fn test_version() -> Result<()> {
-    let output = pq().arg("--version").output()?;
+    let output = parqkit().arg("--version").output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("pq"));
+    assert!(stdout.contains("parqkit"));
     Ok(())
 }
 
 #[test]
 fn test_schema() -> Result<()> {
-    let output = pq().args(["schema", &fixture_path()]).output()?;
+    let output = parqkit().args(["schema", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Column"));
@@ -92,7 +92,7 @@ fn test_schema() -> Result<()> {
 
 #[test]
 fn test_schema_json() -> Result<()> {
-    let output = pq()
+    let output = parqkit()
         .args(["schema", &fixture_path(), "-o", "json"])
         .output()?;
     assert!(output.status.success());
@@ -107,7 +107,9 @@ fn test_schema_json() -> Result<()> {
 #[test]
 fn test_schema_multi_file_json_is_parseable() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["schema", &file, &file, "-o", "json"]).output()?;
+    let output = parqkit()
+        .args(["schema", &file, &file, "-o", "json"])
+        .output()?;
     assert!(output.status.success());
     assert_no_source_headers(&output.stdout);
 
@@ -124,7 +126,9 @@ fn test_schema_multi_file_json_is_parseable() -> Result<()> {
 #[test]
 fn test_schema_multi_file_csv_includes_source_file() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["schema", &file, &file, "-o", "csv"]).output()?;
+    let output = parqkit()
+        .args(["schema", &file, &file, "-o", "csv"])
+        .output()?;
     assert!(output.status.success());
     assert_no_source_headers(&output.stdout);
 
@@ -140,7 +144,7 @@ fn test_schema_multi_file_csv_includes_source_file() -> Result<()> {
 
 #[test]
 fn test_head() -> Result<()> {
-    let output = pq().args(["head", &fixture_path()]).output()?;
+    let output = parqkit().args(["head", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Alice"));
@@ -150,7 +154,9 @@ fn test_head() -> Result<()> {
 
 #[test]
 fn test_head_with_limit() -> Result<()> {
-    let output = pq().args(["head", &fixture_path(), "-n", "2"]).output()?;
+    let output = parqkit()
+        .args(["head", &fixture_path(), "-n", "2"])
+        .output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Alice"));
@@ -160,7 +166,7 @@ fn test_head_with_limit() -> Result<()> {
 
 #[test]
 fn test_head_json() -> Result<()> {
-    let output = pq()
+    let output = parqkit()
         .args(["head", &fixture_path(), "-o", "json"])
         .output()?;
     assert!(output.status.success());
@@ -173,7 +179,9 @@ fn test_head_json() -> Result<()> {
 #[test]
 fn test_head_multi_file_json_is_parseable() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["head", &file, &file, "-o", "json"]).output()?;
+    let output = parqkit()
+        .args(["head", &file, &file, "-o", "json"])
+        .output()?;
     assert!(output.status.success());
     assert_no_source_headers(&output.stdout);
 
@@ -187,7 +195,9 @@ fn test_head_multi_file_json_is_parseable() -> Result<()> {
 
 #[test]
 fn test_tail() -> Result<()> {
-    let output = pq().args(["tail", &fixture_path(), "-n", "2"]).output()?;
+    let output = parqkit()
+        .args(["tail", &fixture_path(), "-n", "2"])
+        .output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diana") || stdout.contains("Eve"));
@@ -196,7 +206,7 @@ fn test_tail() -> Result<()> {
 
 #[test]
 fn test_count() -> Result<()> {
-    let output = pq().args(["count", &fixture_path()]).output()?;
+    let output = parqkit().args(["count", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "5");
@@ -205,7 +215,7 @@ fn test_count() -> Result<()> {
 
 #[test]
 fn test_stats() -> Result<()> {
-    let output = pq().args(["stats", &fixture_path()]).output()?;
+    let output = parqkit().args(["stats", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Column"));
@@ -218,7 +228,9 @@ fn test_stats() -> Result<()> {
 #[test]
 fn test_stats_multi_file_json_is_parseable() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["stats", &file, &file, "-o", "json"]).output()?;
+    let output = parqkit()
+        .args(["stats", &file, &file, "-o", "json"])
+        .output()?;
     assert!(output.status.success());
     assert_no_source_headers(&output.stdout);
 
@@ -235,7 +247,9 @@ fn test_stats_multi_file_json_is_parseable() -> Result<()> {
 #[test]
 fn test_stats_multi_file_csv_includes_source_file() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["stats", &file, &file, "-o", "csv"]).output()?;
+    let output = parqkit()
+        .args(["stats", &file, &file, "-o", "csv"])
+        .output()?;
     assert!(output.status.success());
     assert_no_source_headers(&output.stdout);
 
@@ -254,7 +268,9 @@ fn test_multi_file_jsonl_outputs_only_json_lines() -> Result<()> {
     let file = fixture_path();
 
     for command in ["schema", "stats", "head"] {
-        let output = pq().args([command, &file, &file, "-o", "jsonl"]).output()?;
+        let output = parqkit()
+            .args([command, &file, &file, "-o", "jsonl"])
+            .output()?;
         assert!(output.status.success());
         assert_no_source_headers(&output.stdout);
 
@@ -276,7 +292,7 @@ fn test_multi_file_jsonl_outputs_only_json_lines() -> Result<()> {
 #[test]
 fn test_multi_file_table_output_keeps_source_headers() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["schema", &file, &file]).output()?;
+    let output = parqkit().args(["schema", &file, &file]).output()?;
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -286,7 +302,7 @@ fn test_multi_file_table_output_keeps_source_headers() -> Result<()> {
 
 #[test]
 fn test_info() -> Result<()> {
-    let output = pq().args(["info", &fixture_path()]).output()?;
+    let output = parqkit().args(["info", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Rows"));
@@ -298,7 +314,9 @@ fn test_info() -> Result<()> {
 #[test]
 fn test_info_multi_file_json_is_parseable() -> Result<()> {
     let file = fixture_path();
-    let output = pq().args(["info", &file, &file, "-o", "json"]).output()?;
+    let output = parqkit()
+        .args(["info", &file, &file, "-o", "json"])
+        .output()?;
     assert!(output.status.success());
     assert_no_source_headers(&output.stdout);
 
@@ -315,9 +333,9 @@ fn test_info_multi_file_json_is_parseable() -> Result<()> {
 #[test]
 fn test_convert_csv() -> Result<()> {
     let temp_dir = std::env::temp_dir();
-    let output_path = temp_dir.join("pq_test_output.csv");
+    let output_path = temp_dir.join("parqkit_test_output.csv");
 
-    let output = pq()
+    let output = parqkit()
         .args([
             "convert",
             &fixture_path(),
@@ -338,9 +356,9 @@ fn test_convert_csv() -> Result<()> {
 #[test]
 fn test_convert_json() -> Result<()> {
     let temp_dir = std::env::temp_dir();
-    let output_path = temp_dir.join("pq_test_output.json");
+    let output_path = temp_dir.join("parqkit_test_output.json");
 
-    let output = pq()
+    let output = parqkit()
         .args([
             "convert",
             &fixture_path(),
@@ -365,7 +383,7 @@ fn test_convert_invalid_input_preserves_existing_output() -> Result<()> {
     fs::write(&input_path, b"not parquet")?;
     fs::write(&output_path, b"sentinel")?;
 
-    let output = pq()
+    let output = parqkit()
         .args([
             "convert",
             &input_path.display().to_string(),
@@ -386,7 +404,7 @@ fn test_convert_unsupported_format_preserves_existing_output() -> Result<()> {
     let output_path = temp_path("unsupported_convert_output", "unsupported")?;
     fs::write(&output_path, b"sentinel")?;
 
-    let output = pq()
+    let output = parqkit()
         .args([
             "convert",
             &fixture_path(),
@@ -406,9 +424,9 @@ fn test_convert_unsupported_format_preserves_existing_output() -> Result<()> {
 #[test]
 fn test_merge() -> Result<()> {
     let temp_dir = std::env::temp_dir();
-    let output_path = temp_dir.join("pq_test_merged.parquet");
+    let output_path = temp_dir.join("parqkit_test_merged.parquet");
 
-    let output = pq()
+    let output = parqkit()
         .args([
             "merge",
             &fixture_path(),
@@ -420,7 +438,7 @@ fn test_merge() -> Result<()> {
     assert!(output.status.success());
     assert!(output_path.exists());
 
-    let count_output = pq()
+    let count_output = parqkit()
         .args(["count", &output_path.display().to_string()])
         .output()?;
     let stdout = String::from_utf8_lossy(&count_output.stdout);
@@ -461,7 +479,7 @@ fn test_convert_json_preserves_types() -> Result<()> {
     let jsonl_path = temp_path("typed_output", "jsonl")?;
     write_parquet(&input_path, schema, &[batch], None)?;
 
-    let json_output = pq()
+    let json_output = parqkit()
         .args([
             "convert",
             &input_path.display().to_string(),
@@ -488,7 +506,7 @@ fn test_convert_json_preserves_types() -> Result<()> {
     assert_eq!(rows[0]["flag"], serde_json::json!(true));
     assert_eq!(rows[2]["flag"], serde_json::Value::Null);
 
-    let jsonl_output = pq()
+    let jsonl_output = parqkit()
         .args([
             "convert",
             &input_path.display().to_string(),
@@ -549,7 +567,7 @@ fn assert_scan_multi_file_json_rejects_incompatible_schemas(command: &str) -> Re
     write_parquet(&left, left_schema, &[left_batch], None)?;
     write_parquet(&right, right_schema, &[right_batch], None)?;
 
-    let output = pq()
+    let output = parqkit()
         .args([
             command,
             &left.display().to_string(),
@@ -596,7 +614,7 @@ fn test_convert_rejects_multi_match_glob() -> Result<()> {
     write_parquet(&second, schema, &[batch], None)?;
     let glob = first.with_file_name(format!("{stem}*.parquet"));
 
-    let output = pq()
+    let output = parqkit()
         .args([
             "convert",
             &glob.display().to_string(),
@@ -628,7 +646,7 @@ fn test_stats_aggregates_across_row_groups() -> Result<()> {
     let input_path = temp_path("stats_groups", "parquet")?;
     write_parquet(&input_path, schema, &[batch], Some(2))?;
 
-    let output = pq()
+    let output = parqkit()
         .args(["stats", &input_path.display().to_string(), "-o", "json"])
         .output()?;
     assert!(output.status.success());
@@ -647,7 +665,7 @@ fn test_stats_aggregates_across_row_groups() -> Result<()> {
 
 #[test]
 fn test_schema_jsonl_outputs_one_object_per_line() -> Result<()> {
-    let output = pq()
+    let output = parqkit()
         .args(["schema", &fixture_path(), "-o", "jsonl"])
         .output()?;
     assert!(output.status.success());

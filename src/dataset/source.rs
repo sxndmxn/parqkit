@@ -1,4 +1,4 @@
-use crate::error::PqError;
+use crate::error::ParqkitError;
 use crate::Result;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -22,8 +22,8 @@ impl InputFile {
             [path] => Ok(Self {
                 path: path.to_path_buf(),
             }),
-            [] => Err(PqError::NoInputFiles),
-            _ => Err(PqError::TooManyInputFiles { count: paths.len() }),
+            [] => Err(ParqkitError::NoInputFiles),
+            _ => Err(ParqkitError::TooManyInputFiles { count: paths.len() }),
         }
     }
 
@@ -35,7 +35,7 @@ impl InputFile {
 impl Dataset {
     pub fn from_inputs(inputs: Vec<PathBuf>) -> Result<Self> {
         if inputs.is_empty() {
-            return Err(PqError::NoInputFiles);
+            return Err(ParqkitError::NoInputFiles);
         }
 
         let mut paths = Vec::new();
@@ -56,7 +56,7 @@ impl Dataset {
         }
 
         if paths.is_empty() {
-            return Err(PqError::NoInputFiles);
+            return Err(ParqkitError::NoInputFiles);
         }
 
         Ok(Self { paths })
@@ -85,14 +85,14 @@ fn glob_matches(input: &Path) -> Result<Vec<PathBuf>> {
     let mut matches = Vec::new();
 
     for entry in
-        glob::glob(&pattern).map_err(|error| PqError::invalid_glob_pattern(&pattern, error))?
+        glob::glob(&pattern).map_err(|error| ParqkitError::invalid_glob_pattern(&pattern, error))?
     {
-        let path = entry.map_err(|error| PqError::from_read(error.path(), error.error()))?;
+        let path = entry.map_err(|error| ParqkitError::from_read(error.path(), error.error()))?;
         validate_file_path(&path)?;
         matches.push(path);
 
         if matches.len() > MAX_GLOB_FILES {
-            return Err(PqError::TooManyFilesMatched {
+            return Err(ParqkitError::TooManyFilesMatched {
                 pattern,
                 max_matches: MAX_GLOB_FILES,
             });
@@ -100,7 +100,7 @@ fn glob_matches(input: &Path) -> Result<Vec<PathBuf>> {
     }
 
     if matches.is_empty() {
-        return Err(PqError::NoFilesMatched { pattern });
+        return Err(ParqkitError::NoFilesMatched { pattern });
     }
 
     matches.sort();
@@ -128,11 +128,11 @@ fn is_glob_pattern(path: &Path) -> bool {
 
 fn validate_file_path(path: &Path) -> Result<()> {
     if !path.exists() {
-        return Err(PqError::file_not_found(path));
+        return Err(ParqkitError::file_not_found(path));
     }
 
     if path.is_dir() {
-        return Err(PqError::is_directory(path));
+        return Err(ParqkitError::is_directory(path));
     }
 
     Ok(())
@@ -150,10 +150,10 @@ mod tests {
     fn temp_dir() -> Result<PathBuf> {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(PqError::output_error)?
+            .map_err(ParqkitError::output_error)?
             .as_nanos();
         let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("pq_dataset_{unique}_{counter}"));
+        let dir = std::env::temp_dir().join(format!("parqkit_dataset_{unique}_{counter}"));
         fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -218,10 +218,13 @@ mod tests {
         let glob = dir.join("*.parquet");
 
         let Err(error) = InputFile::from_input(glob) else {
-            return Err(PqError::output_error("multi-match glob should fail"));
+            return Err(ParqkitError::output_error("multi-match glob should fail"));
         };
 
-        assert!(matches!(error, PqError::TooManyInputFiles { count: 2 }));
+        assert!(matches!(
+            error,
+            ParqkitError::TooManyInputFiles { count: 2 }
+        ));
 
         fs::remove_file(first)?;
         fs::remove_file(second)?;

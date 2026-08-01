@@ -11,14 +11,14 @@ mod output;
 pub use api::{count, dataset_from_inputs, info, merge, scan, schema, stats};
 use clap::Parser;
 pub use dataset::Dataset;
-pub use error::PqError;
+pub use error::ParqkitError;
 pub use model::{
     ColumnInfo, ColumnStats, ColumnType, CompressionCodec, CompressionSummary, CountEntry,
     CountResult, FileInfo, LogicalTypeKind, PhysicalType, ScanKind, ScanOptions, ScanResult,
     SchemaResult, StatValue, StatsResult, TimeUnit,
 };
 
-pub type Result<T> = std::result::Result<T, PqError>;
+pub type Result<T> = std::result::Result<T, ParqkitError>;
 
 #[doc(hidden)]
 pub fn run_cli() -> Result<()> {

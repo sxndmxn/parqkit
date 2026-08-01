@@ -1,4 +1,4 @@
-use crate::error::PqError;
+use crate::error::ParqkitError;
 use crate::model::{
     ColumnInfo, ColumnStats, CountResult, FileInfo, LogicalTypeKind, SchemaResult, StatValue,
     StatsResult,
@@ -256,15 +256,15 @@ impl BatchFileWriter {
         let inner = match file_output_format(error_path)? {
             FileOutputFormat::Csv => BatchFileWriterKind::Csv(Box::new(
                 csv::BatchFileWriter::create(write_path)
-                    .map_err(|error| PqError::write_error(error_path, error))?,
+                    .map_err(|error| ParqkitError::write_error(error_path, error))?,
             )),
             FileOutputFormat::Json => BatchFileWriterKind::Json(
                 json::JsonBatchFileWriter::create(write_path)
-                    .map_err(|error| PqError::write_error(error_path, error))?,
+                    .map_err(|error| ParqkitError::write_error(error_path, error))?,
             ),
             FileOutputFormat::Jsonl => BatchFileWriterKind::Jsonl(
                 json::JsonlBatchFileWriter::create(write_path)
-                    .map_err(|error| PqError::write_error(error_path, error))?,
+                    .map_err(|error| ParqkitError::write_error(error_path, error))?,
             ),
         };
         Ok(Self {
@@ -279,7 +279,7 @@ impl BatchFileWriter {
             BatchFileWriterKind::Json(writer) => writer.write(batch),
             BatchFileWriterKind::Jsonl(writer) => writer.write(batch),
         }
-        .map_err(|error| PqError::write_error(&self.path, error))
+        .map_err(|error| ParqkitError::write_error(&self.path, error))
     }
 
     pub fn finish(mut self) -> Result<()> {
@@ -291,7 +291,7 @@ impl BatchFileWriter {
             BatchFileWriterKind::Json(writer) => writer.finish(),
             BatchFileWriterKind::Jsonl(writer) => writer.finish(),
         }
-        .map_err(|error| PqError::write_error(&self.path, error))
+        .map_err(|error| ParqkitError::write_error(&self.path, error))
     }
 }
 
@@ -305,11 +305,11 @@ fn file_output_format(path: &Path) -> Result<FileOutputFormat> {
         Some("csv") => Ok(FileOutputFormat::Csv),
         Some("json") => Ok(FileOutputFormat::Json),
         Some("jsonl") => Ok(FileOutputFormat::Jsonl),
-        Some(format) => Err(PqError::UnsupportedFormat {
+        Some(format) => Err(ParqkitError::UnsupportedFormat {
             format: format.to_string(),
             supported: "csv, json, jsonl".to_string(),
         }),
-        None => Err(PqError::UnsupportedFormat {
+        None => Err(ParqkitError::UnsupportedFormat {
             format: "(no extension)".to_string(),
             supported: "csv, json, jsonl".to_string(),
         }),
@@ -445,10 +445,10 @@ mod tests {
     fn temp_path(extension: &str) -> Result<std::path::PathBuf> {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(PqError::output_error)?
+            .map_err(ParqkitError::output_error)?
             .as_nanos();
         let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        Ok(std::env::temp_dir().join(format!("pq_output_{unique}_{counter}.{extension}")))
+        Ok(std::env::temp_dir().join(format!("parqkit_output_{unique}_{counter}.{extension}")))
     }
 
     fn sample_batch() -> Result<RecordBatch> {

@@ -1,10 +1,10 @@
 # Core Contracts
 
-This document captures the boring foundation decisions that should stay stable while pq grows toward jq-like querying for Parquet.
+This document captures the boring foundation decisions that should stay stable while Parqkit grows toward jq-like querying for Parquet.
 
 ## Goal
 
-pq should expose a small, predictable core for reading Parquet files, producing typed metadata/data results, and rendering those results without surprising callers or scripts.
+Parqkit should expose a small, predictable core for reading Parquet files, producing typed metadata/data results, and rendering those results without surprising callers or scripts.
 
 Until the core is stable, changes should harden existing behavior instead of adding user-facing features.
 
@@ -18,7 +18,7 @@ Until the core is stable, changes should harden existing behavior instead of add
 
 ## Dataset And Input Rules
 
-- Empty input lists return `PqError::NoInputFiles`.
+- Empty input lists return `ParqkitError::NoInputFiles`.
 - Glob inputs are expanded, sorted, validated, and bounded.
 - Explicit repeated files are preserved because the user asked for them.
 - Files matched by globs are deduplicated against other glob matches and against explicit repeats that overlap a glob.
@@ -43,7 +43,7 @@ Until the core is stable, changes should harden existing behavior instead of add
 
 ## Error Contract
 
-- Library errors use `PqError`.
+- Library errors use `ParqkitError`.
 - File read errors should carry path context and be classified into typed variants where practical.
 - File write errors should report the user-requested path, not an internal temporary path.
 - Machine-readable stdout should stay empty when a command fails before producing a complete valid payload.

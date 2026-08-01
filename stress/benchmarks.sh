@@ -1,10 +1,10 @@
 #!/bin/bash
-# Benchmark pq commands with hyperfine
+# Benchmark Parqkit commands with hyperfine
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-PQ="./target/release/pq"
+PARQKIT="./target/release/parqkit"
 
 # Check dependencies
 if ! command -v hyperfine &> /dev/null; then
@@ -12,8 +12,8 @@ if ! command -v hyperfine &> /dev/null; then
     exit 1
 fi
 
-if [[ ! -f "$PQ" ]]; then
-    echo "Building pq in release mode..."
+if [[ ! -f "$PARQKIT" ]]; then
+    echo "Building Parqkit in release mode..."
     cargo build --release
 fi
 
@@ -22,7 +22,7 @@ if [[ ! -d "$FIXTURES_DIR" ]]; then
     exit 1
 fi
 
-echo "=== pq Benchmark Suite ==="
+echo "=== Parqkit Benchmark Suite ==="
 echo ""
 
 # ============================================================================
@@ -31,15 +31,15 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/baseline_100k.parquet" ]]; then
     hyperfine --warmup 5 --runs 20 \
-        "$PQ count $FIXTURES_DIR/baseline_100k.parquet" \
+        "$PARQKIT count $FIXTURES_DIR/baseline_100k.parquet" \
         --export-markdown "$FIXTURES_DIR/../results/count_100k.md" 2>/dev/null || \
-    hyperfine --warmup 5 --runs 20 "$PQ count $FIXTURES_DIR/baseline_100k.parquet"
+    hyperfine --warmup 5 --runs 20 "$PARQKIT count $FIXTURES_DIR/baseline_100k.parquet"
 fi
 
 if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
     echo ""
     hyperfine --warmup 3 --runs 10 \
-        "$PQ count $FIXTURES_DIR/huge_100m.parquet"
+        "$PARQKIT count $FIXTURES_DIR/huge_100m.parquet"
 fi
 
 # ============================================================================
@@ -49,18 +49,18 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/baseline_100k.parquet" ]]; then
     hyperfine --warmup 5 \
-        "$PQ head -n 10 $FIXTURES_DIR/baseline_100k.parquet" \
-        "$PQ head -n 100 $FIXTURES_DIR/baseline_100k.parquet" \
-        "$PQ head -n 1000 $FIXTURES_DIR/baseline_100k.parquet"
+        "$PARQKIT head -n 10 $FIXTURES_DIR/baseline_100k.parquet" \
+        "$PARQKIT head -n 100 $FIXTURES_DIR/baseline_100k.parquet" \
+        "$PARQKIT head -n 1000 $FIXTURES_DIR/baseline_100k.parquet"
 fi
 
 if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
     echo ""
     echo "Head on 100M row file:"
     hyperfine --warmup 3 --runs 5 \
-        "$PQ head -n 10 $FIXTURES_DIR/huge_100m.parquet" \
-        "$PQ head -n 1000 $FIXTURES_DIR/huge_100m.parquet" \
-        "$PQ head -n 10000 $FIXTURES_DIR/huge_100m.parquet"
+        "$PARQKIT head -n 10 $FIXTURES_DIR/huge_100m.parquet" \
+        "$PARQKIT head -n 1000 $FIXTURES_DIR/huge_100m.parquet" \
+        "$PARQKIT head -n 10000 $FIXTURES_DIR/huge_100m.parquet"
 fi
 
 # ============================================================================
@@ -70,14 +70,14 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/medium_1m.parquet" ]]; then
     hyperfine --warmup 2 --runs 5 \
-        "$PQ tail -n 10 $FIXTURES_DIR/medium_1m.parquet"
+        "$PARQKIT tail -n 10 $FIXTURES_DIR/medium_1m.parquet"
 fi
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     echo ""
     echo "Tail on 10M row file:"
     hyperfine --warmup 1 --runs 3 \
-        "$PQ tail -n 10 $FIXTURES_DIR/large_10m.parquet"
+        "$PARQKIT tail -n 10 $FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================
@@ -87,7 +87,7 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/wide_1000col.parquet" ]]; then
     hyperfine --warmup 5 \
-        "$PQ schema $FIXTURES_DIR/wide_1000col.parquet"
+        "$PARQKIT schema $FIXTURES_DIR/wide_1000col.parquet"
 fi
 
 # ============================================================================
@@ -97,13 +97,13 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/medium_1m.parquet" ]]; then
     hyperfine --warmup 2 --runs 5 \
-        "$PQ stats $FIXTURES_DIR/medium_1m.parquet"
+        "$PARQKIT stats $FIXTURES_DIR/medium_1m.parquet"
 fi
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     echo ""
     hyperfine --warmup 1 --runs 3 \
-        "$PQ stats $FIXTURES_DIR/large_10m.parquet"
+        "$PARQKIT stats $FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================
@@ -113,7 +113,7 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/huge_100m.parquet" ]]; then
     hyperfine --warmup 5 \
-        "$PQ info $FIXTURES_DIR/huge_100m.parquet"
+        "$PARQKIT info $FIXTURES_DIR/huge_100m.parquet"
 fi
 
 # ============================================================================
@@ -123,11 +123,11 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     hyperfine --warmup 2 --runs 5 \
-        "$PQ count $FIXTURES_DIR/large_10m.parquet"
+        "$PARQKIT count $FIXTURES_DIR/large_10m.parquet"
 
     echo ""
     hyperfine --warmup 2 --runs 3 \
-        "$PQ tail -n 1000 $FIXTURES_DIR/large_10m.parquet"
+        "$PARQKIT tail -n 1000 $FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================
@@ -137,10 +137,10 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/baseline_100k.parquet" ]]; then
     hyperfine --warmup 3 \
-        "$PQ head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o table > /dev/null" \
-        "$PQ head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o json > /dev/null" \
-        "$PQ head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o jsonl > /dev/null" \
-        "$PQ head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o csv > /dev/null"
+        "$PARQKIT head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o table > /dev/null" \
+        "$PARQKIT head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o json > /dev/null" \
+        "$PARQKIT head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o jsonl > /dev/null" \
+        "$PARQKIT head -n 10000 $FIXTURES_DIR/baseline_100k.parquet -o csv > /dev/null"
 fi
 
 # ============================================================================
@@ -150,7 +150,7 @@ echo ""
 
 if [[ -d "$FIXTURES_DIR/many" ]]; then
     hyperfine --warmup 2 --runs 5 \
-        "$PQ count '$FIXTURES_DIR/many/*.parquet'"
+        "$PARQKIT count '$FIXTURES_DIR/many/*.parquet'"
 fi
 
 echo ""

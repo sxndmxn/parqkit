@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "pq")]
+#[command(name = "parqkit")]
 #[command(
     about = "A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults."
 )]

@@ -1,5 +1,5 @@
 use crate::model::{ColumnStats, ColumnType, StatValue};
-use crate::PqError;
+use crate::ParqkitError;
 use crate::Result;
 use parquet::data_type::Int96;
 use parquet::file::reader::FileReader;
@@ -40,7 +40,7 @@ pub fn column_stats(path: &Path, column_name: Option<&str>) -> Result<Vec<Column
 
     if let Some(name) = column_name {
         if !column_stats.iter().any(|stats| stats.column == name) {
-            return Err(PqError::column_not_found(path, name));
+            return Err(ParqkitError::column_not_found(path, name));
         }
     }
 

@@ -6,13 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
 echo "=============================================="
-echo "       pq Stress Test Suite"
+echo "       Parqkit Stress Test Suite"
 echo "=============================================="
 echo ""
 
 # Build release
 echo ">>> Building release binary..."
-cargo build --release --bin pq --bin pq-generate
+cargo build --release --bin parqkit --bin parqkit-generate
 echo ""
 
 # Check if fixtures exist

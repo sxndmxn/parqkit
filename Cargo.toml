@@ -1,10 +1,10 @@
 [package]
-name = "pq"
+name = "parqkit"
 version = "0.1.0"
 edition = "2021"
 description = "A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults."
 license = "MIT"
-repository = "https://github.com/sxndmxn/pq"
+repository = "https://github.com/sxndmxn/parqkit"
 keywords = ["parquet", "cli", "data", "arrow"]
 categories = ["command-line-utilities", "data-structures"]
 
@@ -21,12 +21,12 @@ glob = "0.3"
 rand = "0.8"
 
 [[bin]]
-name = "pq"
+name = "parqkit"
 path = "src/main.rs"
 
 [[bin]]
-name = "pq-generate"
-path = "src/bin/pq-generate.rs"
+name = "parqkit-generate"
+path = "src/bin/parqkit-generate.rs"
 
 [lints.rust]
 unsafe_code = "forbid"

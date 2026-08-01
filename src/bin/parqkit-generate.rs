@@ -1,4 +1,4 @@
-//! Parquet test file generator for stress testing pq
+//! Parquet test file generator for stress testing Parqkit
 //!
 //! Generates Parquet files with configurable size, schema, and data characteristics.
 
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "pq-generate")]
+#[command(name = "parqkit-generate")]
 #[command(about = "Generate Parquet files for stress testing")]
 struct Cli {
     /// Number of rows to generate

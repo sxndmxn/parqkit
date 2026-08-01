@@ -41,9 +41,9 @@ pub fn count(dataset: &Dataset) -> Result<CountResult> {
 
     for path in dataset.paths() {
         let rows = engine::parquet::row_count(path)?;
-        total_rows = total_rows
-            .checked_add(rows)
-            .ok_or_else(|| crate::PqError::invalid_metadata(path, "row count total overflow"))?;
+        total_rows = total_rows.checked_add(rows).ok_or_else(|| {
+            crate::ParqkitError::invalid_metadata(path, "row count total overflow")
+        })?;
         entries.push(CountEntry {
             path: path.to_path_buf(),
             rows,
@@ -75,12 +75,12 @@ pub(crate) fn convert(input: &Path, output: &Path) -> Result<()> {
     let builder = engine::parquet::reader_builder(input)?;
     let reader = builder
         .build()
-        .map_err(|error| crate::PqError::from_read(input, error))?;
+        .map_err(|error| crate::ParqkitError::from_read(input, error))?;
     let pending_output = crate::atomic_output::PendingOutput::new(output)?;
     let mut writer = crate::output::BatchFileWriter::create_at(pending_output.path(), output)?;
 
     for batch_result in reader {
-        let batch = batch_result.map_err(|error| crate::PqError::corrupted(input, &error))?;
+        let batch = batch_result.map_err(|error| crate::ParqkitError::corrupted(input, &error))?;
         writer.write(&batch)?;
     }
 

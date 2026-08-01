@@ -1,4 +1,4 @@
-use crate::error::{PqError, ResultExt};
+use crate::error::{ParqkitError, ResultExt};
 use crate::model::{ColumnInfo, ColumnType, CompressionCodec, CompressionSummary, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
@@ -20,13 +20,13 @@ pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
     let reader = builder
         .with_batch_size(rows.min(1024))
         .build()
-        .map_err(|error| PqError::from_read(path, error))?;
+        .map_err(|error| ParqkitError::from_read(path, error))?;
 
     let mut batches = Vec::new();
     let mut total_rows = 0usize;
 
     for batch_result in reader {
-        let batch = batch_result.map_err(|error| PqError::corrupted(path, &error))?;
+        let batch = batch_result.map_err(|error| ParqkitError::corrupted(path, &error))?;
         let rows_needed = rows.saturating_sub(total_rows);
         if rows_needed == 0 {
             break;
@@ -60,13 +60,13 @@ pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
     let reader = builder
         .with_row_groups(row_groups)
         .build()
-        .map_err(|error| PqError::from_read(path, error))?;
+        .map_err(|error| ParqkitError::from_read(path, error))?;
 
     let mut result_batches = Vec::new();
     let mut skipped = 0usize;
 
     for batch_result in reader {
-        let batch = batch_result.map_err(|error| PqError::corrupted(path, &error))?;
+        let batch = batch_result.map_err(|error| ParqkitError::corrupted(path, &error))?;
 
         if skipped + batch.num_rows() <= rows_to_skip {
             skipped += batch.num_rows();
@@ -86,7 +86,7 @@ pub fn row_count(path: &Path) -> Result<i64> {
     let reader = serialized_reader(path)?;
     let rows = reader.metadata().file_metadata().num_rows();
     if rows < 0 {
-        return Err(PqError::invalid_metadata(path, "negative row count"));
+        return Err(ParqkitError::invalid_metadata(path, "negative row count"));
     }
     Ok(rows)
 }
@@ -116,7 +116,7 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     let file_metadata = metadata.file_metadata();
     let num_rows = file_metadata.num_rows();
     if num_rows < 0 {
-        return Err(PqError::invalid_metadata(path, "negative row count"));
+        return Err(ParqkitError::invalid_metadata(path, "negative row count"));
     }
     let num_row_groups = metadata.num_row_groups();
 
@@ -136,17 +136,18 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
 
 pub fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).with_path_context(path)?;
-    ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| PqError::from_read(path, error))
+    ParquetRecordBatchReaderBuilder::try_new(file)
+        .map_err(|error| ParqkitError::from_read(path, error))
 }
 
 pub fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
     let file = File::open(path).with_path_context(path)?;
-    SerializedFileReader::new(file).map_err(|error| PqError::from_read(path, error))
+    SerializedFileReader::new(file).map_err(|error| ParqkitError::from_read(path, error))
 }
 
 pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     if paths.is_empty() {
-        return Err(PqError::NoInputFiles);
+        return Err(ParqkitError::NoInputFiles);
     }
 
     let first_builder = reader_builder(paths[0])?;
@@ -155,7 +156,7 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     for path in paths.iter().skip(1) {
         let builder = reader_builder(path)?;
         if builder.schema().as_ref() != schema.as_ref() {
-            return Err(PqError::SchemaMismatch {
+            return Err(ParqkitError::SchemaMismatch {
                 file1: paths[0].display().to_string(),
                 file2: path.display().to_string(),
                 details: "Column names or types differ".to_string(),
@@ -164,31 +165,31 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     }
 
     let pending_output = crate::atomic_output::PendingOutput::new(output)?;
-    let output_file =
-        File::create(pending_output.path()).map_err(|error| PqError::write_error(output, error))?;
+    let output_file = File::create(pending_output.path())
+        .map_err(|error| ParqkitError::write_error(output, error))?;
     let props = WriterProperties::builder()
         .set_compression(Compression::SNAPPY)
         .build();
     let mut writer = ArrowWriter::try_new(output_file, Arc::clone(&schema), Some(props))
-        .map_err(|error| PqError::write_error(output, error))?;
+        .map_err(|error| ParqkitError::write_error(output, error))?;
 
     for path in paths {
         let builder = reader_builder(path)?;
         let reader = builder
             .build()
-            .map_err(|error| PqError::from_read(path, error))?;
+            .map_err(|error| ParqkitError::from_read(path, error))?;
 
         for batch_result in reader {
-            let batch = batch_result.map_err(|error| PqError::corrupted(path, error))?;
+            let batch = batch_result.map_err(|error| ParqkitError::corrupted(path, error))?;
             writer
                 .write(&batch)
-                .map_err(|error| PqError::write_error(output, error))?;
+                .map_err(|error| ParqkitError::write_error(output, error))?;
         }
     }
 
     writer
         .close()
-        .map_err(|error| PqError::write_error(output, error))?;
+        .map_err(|error| ParqkitError::write_error(output, error))?;
     pending_output.commit()
 }
 
@@ -203,7 +204,7 @@ fn tail_row_groups(
     for row_group_index in (0..metadata.num_row_groups()).rev() {
         let row_group = metadata.row_group(row_group_index);
         let row_group_rows = usize::try_from(row_group.num_rows()).map_err(|_| {
-            PqError::invalid_metadata(
+            ParqkitError::invalid_metadata(
                 path,
                 format!(
                     "row group {} in {} cannot be represented on this platform",
