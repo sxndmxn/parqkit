@@ -170,6 +170,7 @@ An existing literal path takes precedence over pattern syntax, so names containi
 ## Development
 
 - [Core contracts](docs/core-contracts.md) captures the foundation invariants for input handling, output rendering, safe writes, and error behavior.
+- [Release process](docs/releasing.md) documents the tag-driven crates.io and GitHub release pipeline.
 - Stress fixtures and the `parqkit-generate` helper are opt-in: `cargo test --all-features` or `cargo build --features stress-tools --bin parqkit-generate`.
 - CI audits dependencies, builds, formats, lints, tests, documents, and packages the crate with the committed lockfile.
 

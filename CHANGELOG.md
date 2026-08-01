@@ -18,3 +18,4 @@ All notable changes to Parqkit are documented here.
 - Retain read compatibility coverage for Parquet 53 fixtures using Snappy, Gzip, Zstd, and uncompressed data.
 - Declare and continuously check the Rust 1.85 minimum supported version.
 - Make stress, chaos, benchmark, and memory-profile runners reproducible and safe to invoke from any working directory.
+- Publish verified version tags to crates.io and create matching GitHub Releases through a guarded release workflow.
