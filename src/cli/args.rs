@@ -4,9 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "parqkit")]
-#[command(
-    about = "A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults."
-)]
+#[command(about = "Inspect, convert, and merge Parquet files with fast, script-friendly output.")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
@@ -61,7 +59,7 @@ pub struct SchemaArgs {
     /// Output format
     #[arg(short, long, default_value = "table")]
     pub output: OutputFormatArg,
-    /// Suppress headers and formatting
+    /// Suppress headers and source labels
     #[arg(short, long)]
     pub quiet: bool,
 }
@@ -77,7 +75,7 @@ pub struct HeadArgs {
     /// Output format
     #[arg(short, long, default_value = "table")]
     pub output: OutputFormatArg,
-    /// Suppress headers and formatting
+    /// Suppress headers and source labels
     #[arg(short, long)]
     pub quiet: bool,
 }
@@ -93,7 +91,7 @@ pub struct TailArgs {
     /// Output format
     #[arg(short, long, default_value = "table")]
     pub output: OutputFormatArg,
-    /// Suppress headers and formatting
+    /// Suppress headers and source labels
     #[arg(short, long)]
     pub quiet: bool,
 }
@@ -103,7 +101,7 @@ pub struct CountArgs {
     /// Parquet file(s) to read
     #[arg(required = true)]
     pub inputs: Vec<PathBuf>,
-    /// Suppress headers and formatting
+    /// Suppress headers and source labels
     #[arg(short, long)]
     pub quiet: bool,
 }
@@ -119,7 +117,7 @@ pub struct StatsArgs {
     /// Output format
     #[arg(short, long, default_value = "table")]
     pub output: OutputFormatArg,
-    /// Suppress headers and formatting
+    /// Suppress headers and source labels
     #[arg(short, long)]
     pub quiet: bool,
 }
@@ -152,7 +150,7 @@ pub struct InfoArgs {
     /// Output format
     #[arg(short, long, default_value = "table")]
     pub output: OutputFormatArg,
-    /// Suppress headers and formatting
+    /// Suppress headers and source labels
     #[arg(short, long)]
     pub quiet: bool,
 }

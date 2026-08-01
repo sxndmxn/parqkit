@@ -3,8 +3,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-PARQKIT="./target/release/parqkit"
+PARQKIT="$REPO_ROOT/target/release/parqkit"
+RESULTS_DIR="$SCRIPT_DIR/results"
+
+cd "$REPO_ROOT"
+
+mkdir -p "$RESULTS_DIR"
 
 # Check dependencies
 if ! command -v hyperfine &> /dev/null; then
@@ -14,7 +20,7 @@ fi
 
 if [[ ! -f "$PARQKIT" ]]; then
     echo "Building Parqkit in release mode..."
-    cargo build --release
+    cargo build --release --locked
 fi
 
 if [[ ! -d "$FIXTURES_DIR" ]]; then
@@ -32,7 +38,7 @@ echo ""
 if [[ -f "$FIXTURES_DIR/baseline_100k.parquet" ]]; then
     hyperfine --warmup 5 --runs 20 \
         "$PARQKIT count $FIXTURES_DIR/baseline_100k.parquet" \
-        --export-markdown "$FIXTURES_DIR/../results/count_100k.md" 2>/dev/null || \
+        --export-markdown "$RESULTS_DIR/count_100k.md" 2>/dev/null || \
     hyperfine --warmup 5 --runs 20 "$PARQKIT count $FIXTURES_DIR/baseline_100k.parquet"
 fi
 

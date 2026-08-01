@@ -18,7 +18,7 @@ pub fn run(args: InfoArgs) -> Result<()> {
         output::write_file_infos(structured_output, quiet, &infos)
     } else {
         for info in &infos {
-            commands::print_source_header(&dataset, info.path(), quiet);
+            commands::print_source_header(&dataset, info.path(), quiet)?;
             output::write_file_info(quiet, info)?;
         }
         Ok(())

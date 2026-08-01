@@ -1,7 +1,10 @@
 //! CLI integration tests for Parqkit
 
 use anyhow::Result;
-use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
+use arrow::array::{
+    ArrayRef, BooleanArray, Decimal128Array, Float16Array, Float64Array, Int64Array, StringArray,
+    UInt32Array, UInt64Array,
+};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
@@ -9,6 +12,8 @@ use parquet::file::properties::{EnabledStatistics, WriterProperties};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(unix)]
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -41,7 +46,7 @@ fn write_parquet(
     let file = fs::File::create(path)?;
     let props = max_row_group_size.map(|size| {
         WriterProperties::builder()
-            .set_max_row_group_size(size)
+            .set_max_row_group_row_count(Some(size))
             .build()
     });
     let mut writer = ArrowWriter::try_new(file, schema, props)?;
@@ -176,6 +181,75 @@ fn test_head_json() -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn test_closed_stdout_pipe_is_successful() -> Result<()> {
+    let input_path = temp_path("broken_pipe", "parquet")?;
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Utf8,
+        false,
+    )]));
+    let value = "x".repeat(256);
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(StringArray::from_iter_values(
+            (0..10_000).map(|_| value.as_str()),
+        )) as ArrayRef],
+    )?;
+    write_parquet(&input_path, schema, &[batch], None)?;
+
+    for output_format in ["table", "json", "jsonl", "csv"] {
+        let mut child = parqkit()
+            .args([
+                "head",
+                input_path.to_string_lossy().as_ref(),
+                "--rows",
+                "10000",
+                "--output",
+                output_format,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        drop(child.stdout.take());
+        let output = child.wait_with_output()?;
+
+        assert!(
+            output.status.success(),
+            "{output_format} pipeline failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+    }
+
+    let input = input_path.to_string_lossy();
+    let mut child = parqkit()
+        .args([
+            "head",
+            input.as_ref(),
+            input.as_ref(),
+            "--rows",
+            "10000",
+            "--output",
+            "table",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    drop(child.stdout.take());
+    let output = child.wait_with_output()?;
+    assert!(
+        output.status.success(),
+        "multi-source table pipeline failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    fs::remove_file(input_path)?;
+    Ok(())
+}
+
 #[test]
 fn test_head_multi_file_json_is_parseable() -> Result<()> {
     let file = fixture_path();
@@ -190,6 +264,51 @@ fn test_head_multi_file_json_is_parseable() -> Result<()> {
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("head json output should be an array"))?;
     assert_eq!(rows.len(), 10);
+    Ok(())
+}
+
+#[test]
+fn test_head_multi_file_json_ignores_schema_metadata_differences() -> Result<()> {
+    let left_schema = Arc::new(Schema::new_with_metadata(
+        vec![Field::new("value", DataType::Int64, false).with_metadata(
+            std::collections::HashMap::from([("field_owner".to_string(), "left".to_string())]),
+        )],
+        std::collections::HashMap::from([("producer".to_string(), "left".to_string())]),
+    ));
+    let right_schema = Arc::new(Schema::new_with_metadata(
+        vec![Field::new("value", DataType::Int64, false).with_metadata(
+            std::collections::HashMap::from([("field_owner".to_string(), "right".to_string())]),
+        )],
+        std::collections::HashMap::from([("producer".to_string(), "right".to_string())]),
+    ));
+    let left_batch = RecordBatch::try_new(
+        Arc::clone(&left_schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let right_batch = RecordBatch::try_new(
+        Arc::clone(&right_schema),
+        vec![Arc::new(Int64Array::from(vec![2])) as ArrayRef],
+    )?;
+    let left = temp_path("scan_metadata_left", "parquet")?;
+    let right = temp_path("scan_metadata_right", "parquet")?;
+    write_parquet(&left, left_schema, &[left_batch], None)?;
+    write_parquet(&right, right_schema, &[right_batch], None)?;
+
+    let output = parqkit()
+        .args([
+            "head",
+            &left.display().to_string(),
+            &right.display().to_string(),
+            "-o",
+            "json",
+        ])
+        .output()?;
+    assert!(output.status.success());
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(rows, serde_json::json!([{"value": 1}, {"value": 2}]));
+
+    fs::remove_file(left)?;
+    fs::remove_file(right)?;
     Ok(())
 }
 
@@ -421,6 +540,25 @@ fn test_convert_unsupported_format_preserves_existing_output() -> Result<()> {
     assert!(stderr.contains("Unsupported format"));
 
     fs::remove_file(output_path)?;
+    Ok(())
+}
+
+#[test]
+fn test_convert_write_error_reports_requested_path() -> Result<()> {
+    let missing_parent = temp_path("missing_output_parent", "dir")?;
+    let output_path = missing_parent.join("requested.json");
+    let input_path = fixture_path();
+    let output_path_text = output_path.display().to_string();
+
+    let output = parqkit()
+        .args(["convert", input_path.as_str(), output_path_text.as_str()])
+        .output()?;
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains(&output_path_text));
+    assert!(!stderr.contains(".requested.json.tmp."));
+    assert!(!output_path.exists());
     Ok(())
 }
 
@@ -686,6 +824,43 @@ fn test_empty_csv_outputs_preserve_schema_headers() -> Result<()> {
 }
 
 #[test]
+fn test_empty_json_outputs_are_valid() -> Result<()> {
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Int64,
+        false,
+    )]));
+    let input = temp_path("empty_json_input", "parquet")?;
+    write_parquet(&input, schema, &[], None)?;
+
+    let head = parqkit()
+        .args(["head", &input.display().to_string(), "-o", "json"])
+        .output()?;
+    assert!(head.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&head.stdout)?,
+        serde_json::json!([])
+    );
+
+    for (extension, expected) in [("json", "[]"), ("jsonl", "")] {
+        let converted = temp_path("empty_json_output", extension)?;
+        let output = parqkit()
+            .args([
+                "convert",
+                &input.display().to_string(),
+                &converted.display().to_string(),
+            ])
+            .output()?;
+        assert!(output.status.success());
+        assert_eq!(fs::read_to_string(&converted)?, expected);
+        fs::remove_file(converted)?;
+    }
+
+    fs::remove_file(input)?;
+    Ok(())
+}
+
+#[test]
 fn test_convert_rejects_multi_match_glob() -> Result<()> {
     let schema = Arc::new(Schema::new(vec![Field::new(
         "value",
@@ -759,6 +934,88 @@ fn test_stats_aggregates_across_row_groups() -> Result<()> {
     assert_eq!(rows[0]["statistics_complete"], serde_json::json!(true));
 
     let _ignored = fs::remove_file(&input_path);
+    Ok(())
+}
+
+#[test]
+fn test_stats_preserves_unsigned_bounds_across_row_groups() -> Result<()> {
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("u32", DataType::UInt32, false),
+        Field::new("u64", DataType::UInt64, false),
+    ]));
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![
+            Arc::new(UInt32Array::from(vec![u32::MAX, 0])) as ArrayRef,
+            Arc::new(UInt64Array::from(vec![u64::MAX, 0])) as ArrayRef,
+        ],
+    )?;
+    let input = temp_path("stats_unsigned", "parquet")?;
+    write_parquet(&input, schema, &[batch], Some(1))?;
+
+    let output = parqkit()
+        .args(["stats", &input.display().to_string(), "-o", "json"])
+        .output()?;
+    assert!(output.status.success());
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(rows[0]["min"], serde_json::json!(0));
+    assert_eq!(rows[0]["max"], serde_json::json!(u32::MAX));
+    assert_eq!(rows[1]["min"], serde_json::json!(0));
+    assert_eq!(rows[1]["max"], serde_json::json!(u64::MAX));
+    assert_eq!(rows[0]["logical_type"], serde_json::json!("UINT32"));
+    assert_eq!(rows[1]["logical_type"], serde_json::json!("UINT64"));
+
+    fs::remove_file(input)?;
+    Ok(())
+}
+
+#[test]
+fn test_stats_aggregates_and_renders_byte_backed_decimals() -> Result<()> {
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "amount",
+        DataType::Decimal128(30, 2),
+        false,
+    )]));
+    let values = Decimal128Array::from(vec![100, -200]).with_precision_and_scale(30, 2)?;
+    let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(values) as ArrayRef])?;
+    let input = temp_path("stats_decimal", "parquet")?;
+    write_parquet(&input, schema, &[batch], Some(1))?;
+
+    let output = parqkit()
+        .args(["stats", &input.display().to_string(), "-o", "json"])
+        .output()?;
+    assert!(output.status.success());
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(rows[0]["min"], serde_json::json!("-2.00"));
+    assert_eq!(rows[0]["max"], serde_json::json!("1.00"));
+    assert_eq!(rows[0]["logical_type"], serde_json::json!("DECIMAL(30,2)"));
+
+    fs::remove_file(input)?;
+    Ok(())
+}
+
+#[test]
+fn test_stats_aggregates_float16_by_numeric_order() -> Result<()> {
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Float16,
+        false,
+    )]));
+    let values = Float16Array::from(vec![half::f16::from_f32(1.0), half::f16::from_f32(-1.0)]);
+    let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(values) as ArrayRef])?;
+    let input = temp_path("stats_float16", "parquet")?;
+    write_parquet(&input, schema, &[batch], Some(1))?;
+
+    let output = parqkit()
+        .args(["stats", &input.display().to_string(), "-o", "json"])
+        .output()?;
+    assert!(output.status.success());
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(rows[0]["min"], serde_json::json!(-1.0));
+    assert_eq!(rows[0]["max"], serde_json::json!(1.0));
+    assert_eq!(rows[0]["logical_type"], serde_json::json!("FLOAT16"));
+
+    fs::remove_file(input)?;
     Ok(())
 }
 

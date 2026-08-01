@@ -8,6 +8,7 @@ use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
 use serde::Serialize;
 use serde_json::Value;
+use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -267,20 +268,17 @@ enum BatchFileWriterKind {
 }
 
 impl BatchFileWriter {
-    pub fn create_at(write_path: &Path, error_path: &Path, schema: &SchemaRef) -> Result<Self> {
+    pub fn create(file: File, error_path: &Path, schema: &SchemaRef) -> Result<Self> {
         let inner = match file_output_format(error_path)? {
             FileOutputFormat::Csv => BatchFileWriterKind::Csv(Box::new(
-                csv::BatchFileWriter::create(write_path, Arc::clone(schema))
-                    .map_err(|error| ParqkitError::write_error(error_path, error))?,
+                csv::BatchFileWriter::create(file, Arc::clone(schema)),
             )),
-            FileOutputFormat::Json => BatchFileWriterKind::Json(
-                json::JsonBatchFileWriter::create(write_path)
-                    .map_err(|error| ParqkitError::write_error(error_path, error))?,
-            ),
-            FileOutputFormat::Jsonl => BatchFileWriterKind::Jsonl(
-                json::JsonlBatchFileWriter::create(write_path)
-                    .map_err(|error| ParqkitError::write_error(error_path, error))?,
-            ),
+            FileOutputFormat::Json => {
+                BatchFileWriterKind::Json(json::JsonBatchFileWriter::create(file))
+            }
+            FileOutputFormat::Jsonl => {
+                BatchFileWriterKind::Jsonl(json::JsonlBatchFileWriter::create(file))
+            }
         };
         Ok(Self {
             path: error_path.to_path_buf(),
@@ -384,14 +382,8 @@ fn stats_row(file: Option<&Path>, row: &ColumnStats) -> StatsJsonRow {
         column: row.column.clone(),
         display_type: row.display_type(),
         null_count: row.null_count,
-        min: row
-            .min
-            .as_ref()
-            .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
-        max: row
-            .max
-            .as_ref()
-            .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
+        min: row.min.as_ref().map(|value| stat_value_json(row, value)),
+        max: row.max.as_ref().map(|value| stat_value_json(row, value)),
         statistics_complete: row.statistics_complete,
         physical_type: row.column_type.physical.to_string(),
         logical_type: row
@@ -417,11 +409,19 @@ fn file_info_rows(rows: &[FileInfo]) -> Vec<FileInfoJsonRow> {
         .collect()
 }
 
-fn stat_value_json(value: &StatValue, logical_type: Option<&LogicalTypeKind>) -> Value {
+fn stat_value_json(row: &ColumnStats, value: &StatValue) -> Value {
+    let logical_type = row.column_type.logical.as_ref();
+    if matches!(logical_type, Some(LogicalTypeKind::Decimal { .. })) {
+        return Value::from(row.display_stat_value(value));
+    }
+
     match value {
         StatValue::Int32(inner) => Value::from(*inner),
+        StatValue::UInt32(inner) => Value::from(*inner),
         StatValue::Int64(inner) => Value::from(*inner),
+        StatValue::UInt64(inner) => Value::from(*inner),
         StatValue::Float(inner) => json_float(f64::from(*inner)),
+        StatValue::Float16(inner) => json_float(f64::from(*inner)),
         StatValue::Double(inner) => json_float(*inner),
         StatValue::Binary(inner) | StatValue::FixedLenBinary(inner) => {
             if logical_type == Some(&LogicalTypeKind::String) {
@@ -433,6 +433,7 @@ fn stat_value_json(value: &StatValue, logical_type: Option<&LogicalTypeKind>) ->
                 Value::from(hex_string(inner))
             }
         }
+        StatValue::DecimalBytes(inner) => Value::from(hex_string(inner)),
         StatValue::Boolean(inner) => Value::from(*inner),
         StatValue::Int96(inner) => Value::from(inner.as_str()),
     }
@@ -493,8 +494,9 @@ mod tests {
     fn infers_jsonl_output_from_path() -> Result<()> {
         let path = temp_path("jsonl")?;
         let batch = sample_batch()?;
+        let file = File::create(&path)?;
 
-        let mut writer = BatchFileWriter::create_at(&path, &path, &batch.schema())?;
+        let mut writer = BatchFileWriter::create(file, &path, &batch.schema())?;
         writer.write(&batch)?;
         writer.finish()?;
 
@@ -509,8 +511,9 @@ mod tests {
         let write_path = temp_path("tmp")?;
         let error_path = temp_path("jsonl")?;
         let batch = sample_batch()?;
+        let file = File::create(&write_path)?;
 
-        let mut writer = BatchFileWriter::create_at(&write_path, &error_path, &batch.schema())?;
+        let mut writer = BatchFileWriter::create(file, &error_path, &batch.schema())?;
         writer.write(&batch)?;
         writer.finish()?;
 

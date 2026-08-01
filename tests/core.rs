@@ -1,3 +1,5 @@
+//! Public library and foundation contract tests.
+
 use anyhow::Result;
 use arrow::array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow::datatypes::{DataType, Field, Fields, Schema};
@@ -97,6 +99,20 @@ fn repeated_explicit_dataset_inputs_are_preserved() -> Result<()> {
 }
 
 #[test]
+fn existing_paths_with_glob_metacharacters_are_literal() -> Result<()> {
+    let dir = temp_dir("dataset_literal_metacharacters")?;
+    let file = dir.join("sample[1].parquet");
+    fs::write(&file, b"PAR1")?;
+
+    let dataset = parqkit::dataset_from_inputs(vec![file.clone()])?;
+    assert_eq!(dataset.paths().collect::<Vec<_>>(), vec![file.as_path()]);
+
+    fs::remove_file(file)?;
+    fs::remove_dir(dir)?;
+    Ok(())
+}
+
+#[test]
 fn dataset_glob_matches_are_deduplicated_against_explicit_inputs() -> Result<()> {
     let dir = temp_dir("dataset_glob_dedup")?;
     let file = dir.join("sample.parquet");
@@ -150,6 +166,62 @@ fn file_info_comes_from_public_api() -> Result<()> {
         .display()
         .to_string()
         .ends_with("tests/fixtures/test.parquet"));
+
+    Ok(())
+}
+
+#[test]
+fn legacy_compression_fixtures_remain_readable() -> Result<()> {
+    let cases = [
+        (
+            "edge-none.parquet",
+            40,
+            8,
+            parqkit::CompressionCodec::Uncompressed,
+        ),
+        (
+            "mixed-snappy.parquet",
+            64,
+            8,
+            parqkit::CompressionCodec::Snappy,
+        ),
+        (
+            "sparse-gzip.parquet",
+            96,
+            6,
+            parqkit::CompressionCodec::Gzip,
+        ),
+        (
+            "unicode-zstd.parquet",
+            48,
+            4,
+            parqkit::CompressionCodec::Zstd,
+        ),
+    ];
+
+    for (name, rows, columns, compression) in cases {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/volatile")
+            .join(name);
+        let dataset = parqkit::dataset_from_inputs(vec![path])?;
+        let info = &parqkit::info(&dataset)?[0];
+        assert_eq!(info.num_rows, rows);
+        assert_eq!(info.num_columns, columns);
+        assert_eq!(
+            info.compression,
+            parqkit::CompressionSummary::Single(compression)
+        );
+        assert_eq!(parqkit::count(&dataset)?.total_rows, rows);
+        assert_eq!(parqkit::schema(&dataset)?[0].columns.len(), columns);
+        assert_eq!(parqkit::stats(&dataset, None)?[0].rows.len(), columns);
+
+        let scan = parqkit::scan(
+            &dataset,
+            parqkit::ScanKind::Head,
+            parqkit::ScanOptions { rows: 1 },
+        )?;
+        assert_eq!(scan[0].batches[0].num_rows(), 1);
+    }
 
     Ok(())
 }
@@ -286,6 +358,54 @@ fn streaming_query_pushes_down_projection_limit_and_batch_size() -> Result<()> {
     assert_eq!(ids.value(0), 1);
     assert!(stream.next().is_none());
 
+    Ok(())
+}
+
+#[test]
+fn streaming_query_normalizes_file_schema_metadata() -> Result<()> {
+    let schema = Arc::new(Schema::new_with_metadata(
+        vec![Field::new("value", DataType::Int64, false).with_metadata(
+            std::collections::HashMap::from([("field_owner".to_string(), "parqkit".to_string())]),
+        )],
+        std::collections::HashMap::from([("owner".to_string(), "parqkit".to_string())]),
+    ));
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef],
+    )?;
+    let input = temp_path("query_schema_metadata", "parquet")?;
+    write_parquet(&input, schema, &[batch])?;
+    let dataset = parqkit::dataset_from_inputs(vec![input.clone()])?;
+
+    for kind in [parqkit::ScanKind::Head, parqkit::ScanKind::Tail] {
+        let results = parqkit::scan(&dataset, kind, parqkit::ScanOptions { rows: 1 })?;
+        assert!(results[0].schema.metadata().is_empty());
+        assert!(results[0].schema.field(0).metadata().is_empty());
+        assert_eq!(results[0].batches[0].schema(), results[0].schema);
+    }
+
+    for projection in [
+        parqkit::Projection::All,
+        parqkit::Projection::Columns(vec!["value".to_string()]),
+    ] {
+        let options = parqkit::QueryOptions {
+            projection,
+            ..parqkit::QueryOptions::default()
+        };
+        let mut stream = parqkit::execute_query(&dataset, options)?;
+
+        assert!(stream.sources()[0].schema.metadata().is_empty());
+        assert!(stream.sources()[0].schema.field(0).metadata().is_empty());
+        let result = stream
+            .next()
+            .transpose()?
+            .ok_or_else(|| anyhow::anyhow!("query should produce one batch"))?;
+        assert_eq!(result.batch.num_rows(), 2);
+        assert!(result.batch.schema().metadata().is_empty());
+        assert!(result.batch.schema().field(0).metadata().is_empty());
+    }
+
+    fs::remove_file(input)?;
     Ok(())
 }
 
@@ -496,6 +616,85 @@ fn merge_comes_from_public_api() -> Result<()> {
     let output_dataset = parqkit::dataset_from_inputs(vec![output.clone()])?;
     let count = parqkit::count(&output_dataset)?;
     assert_eq!(count.total_rows, 4);
+
+    fs::remove_file(left)?;
+    fs::remove_file(right)?;
+    fs::remove_file(output)?;
+    Ok(())
+}
+
+#[test]
+fn merge_ignores_schema_metadata_differences() -> Result<()> {
+    let left_schema = Arc::new(Schema::new_with_metadata(
+        vec![Field::new("value", DataType::Int64, false).with_metadata(
+            std::collections::HashMap::from([("field_owner".to_string(), "left".to_string())]),
+        )],
+        std::collections::HashMap::from([("producer".to_string(), "left".to_string())]),
+    ));
+    let right_schema = Arc::new(Schema::new_with_metadata(
+        vec![Field::new("value", DataType::Int64, false).with_metadata(
+            std::collections::HashMap::from([("field_owner".to_string(), "right".to_string())]),
+        )],
+        std::collections::HashMap::from([("producer".to_string(), "right".to_string())]),
+    ));
+    let left_batch = RecordBatch::try_new(
+        Arc::clone(&left_schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let right_batch = RecordBatch::try_new(
+        Arc::clone(&right_schema),
+        vec![Arc::new(Int64Array::from(vec![2])) as ArrayRef],
+    )?;
+    let left = temp_path("merge_metadata_left", "parquet")?;
+    let right = temp_path("merge_metadata_right", "parquet")?;
+    let output = temp_path("merge_metadata_output", "parquet")?;
+    write_parquet(&left, left_schema, &[left_batch])?;
+    write_parquet(&right, right_schema, &[right_batch])?;
+
+    let dataset = parqkit::dataset_from_inputs(vec![left.clone(), right.clone()])?;
+    parqkit::merge(&dataset, &output)?;
+    let merged = parqkit::dataset_from_inputs(vec![output.clone()])?;
+    assert_eq!(parqkit::count(&merged)?.total_rows, 2);
+
+    fs::remove_file(left)?;
+    fs::remove_file(right)?;
+    fs::remove_file(output)?;
+    Ok(())
+}
+
+#[test]
+fn merge_rejects_different_arrow_extension_types() -> Result<()> {
+    let extension_field = |extension_name: &str| {
+        Field::new("value", DataType::Int64, false).with_metadata(std::collections::HashMap::from(
+            [(
+                "ARROW:extension:name".to_string(),
+                extension_name.to_string(),
+            )],
+        ))
+    };
+    let left_schema = Arc::new(Schema::new(vec![extension_field("parqkit.left")]));
+    let right_schema = Arc::new(Schema::new(vec![extension_field("parqkit.right")]));
+    let left_batch = RecordBatch::try_new(
+        Arc::clone(&left_schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let right_batch = RecordBatch::try_new(
+        Arc::clone(&right_schema),
+        vec![Arc::new(Int64Array::from(vec![2])) as ArrayRef],
+    )?;
+    let left = temp_path("merge_extension_left", "parquet")?;
+    let right = temp_path("merge_extension_right", "parquet")?;
+    let output = temp_path("merge_extension_output", "parquet")?;
+    write_parquet(&left, left_schema, &[left_batch])?;
+    write_parquet(&right, right_schema, &[right_batch])?;
+    fs::write(&output, b"sentinel")?;
+
+    let dataset = parqkit::dataset_from_inputs(vec![left.clone(), right.clone()])?;
+    assert!(matches!(
+        parqkit::merge(&dataset, &output),
+        Err(parqkit::ParqkitError::SchemaMismatch { .. })
+    ));
+    assert_eq!(fs::read(&output)?, b"sentinel");
 
     fs::remove_file(left)?;
     fs::remove_file(right)?;

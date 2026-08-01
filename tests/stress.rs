@@ -850,7 +850,7 @@ fn merge_many_files() {
     let mut paths = Vec::new();
     for i in 0..100 {
         let path = generate_fixture(
-            &format!("merge_part_{}.parquet", i),
+            &format!("merge_10k_part_{i}.parquet"),
             &[
                 "--rows",
                 "10000",
@@ -865,7 +865,7 @@ fn merge_many_files() {
         paths.push(path);
     }
 
-    let output_path = fixtures_dir().join("merged_100.parquet");
+    let output_path = fixtures_dir().join("merged_100x10k.parquet");
     let mut args: Vec<&str> = vec!["merge"];
     let path_strs: Vec<String> = paths
         .iter()
@@ -894,10 +894,10 @@ fn merge_many_files() {
 #[test]
 #[ignore]
 fn glob_many_files() {
-    // Ensure we have 100 merge part files
+    // Ensure we have 100 independent glob fixtures.
     for i in 0..100 {
         generate_fixture(
-            &format!("merge_part_{}.parquet", i),
+            &format!("glob_1k_part_{i}.parquet"),
             &[
                 "--rows",
                 "1000",
@@ -911,9 +911,9 @@ fn glob_many_files() {
         );
     }
 
-    let glob_pattern = fixtures_dir().join("merge_part_*.parquet");
+    let glob_pattern = fixtures_dir().join("glob_1k_part_*.parquet");
     let output = run_parqkit_success(&["count", glob_pattern.to_str().unwrap()]);
 
     // Should aggregate counts from all matched files
-    assert!(!output.is_empty());
+    assert_eq!(output.lines().last(), Some("Total: 100000"));
 }

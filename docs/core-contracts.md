@@ -20,6 +20,7 @@ Until the core is stable, changes should harden existing behavior instead of add
 
 - Empty input lists return `ParqkitError::NoInputFiles`.
 - Glob inputs are expanded, sorted, validated, and bounded.
+- Existing literal paths take precedence over glob syntax, so file names containing metacharacters remain addressable.
 - Explicit repeated files are preserved because the user asked for them.
 - Files matched by globs are deduplicated against other glob matches and against explicit repeats that overlap a glob.
 - Commands that require exactly one input use the crate-private single-input path and reject multi-match globs.
@@ -31,10 +32,12 @@ Until the core is stable, changes should harden existing behavior instead of add
 - Structured aggregate output is limited to JSON, JSONL, and CSV.
 - Single-file structured output keeps the historical single-file shape.
 - Multi-file structured metadata output includes a `file` field.
-- `head` and `tail` structured output may combine batches only when schemas are compatible.
-- Scan results retain their Arrow schema even when they contain no record batches. Empty CSV scans therefore keep headers, and empty inputs participate in schema validation.
+- `head` and `tail` structured output may combine batches only when data schemas are compatible; custom Arrow schema and top-level field metadata do not make otherwise identical fields incompatible, but Arrow extension-type metadata remains schema-significant.
+- Scan results retain their Arrow schema even when they contain no record batches. Non-empty eager and streaming batches use that same normalized schema, empty CSV scans therefore keep headers, and empty inputs participate in schema validation.
 - Nested Parquet leaves use their full dotted column paths and effective nullability across parent groups.
 - Stats results distinguish complete metadata from unavailable or partial metadata. Unknown counts and bounds are not rendered as authoritative zeroes.
+- Stats aggregation respects logical unsigned, decimal, and `FLOAT16` ordering across row groups; decimal JSON bounds use exact scaled strings. Bounds require exact metadata and a supported type-defined column order, so legacy, unknown, and undefined orders do not produce authoritative bounds.
+- Missing statistics null counts remain unknown rather than being coerced to zero.
 - Non-finite stats bounds use explicit JSON strings because JSON has no native NaN or infinity values.
 - `count` intentionally prints plain text counts instead of using the structured output system.
 
@@ -50,13 +53,15 @@ Until the core is stable, changes should harden existing behavior instead of add
 
 ## Safe Write Contract
 
-- Generated output is written to a same-directory temporary file and renamed into place only after the writer successfully finishes and buffered data is flushed.
+- Generated output reserves a new same-directory temporary file without truncating an existing path, writes through that reserved file handle, and renames it into place only after the writer successfully finishes and buffered data is flushed.
 - Temporary paths are internal implementation details and must not determine output format.
 - User-requested output paths determine format inference and user-facing write errors.
 - Failed reads, unsupported formats, schema mismatches, and writer failures must not truncate an existing output file.
+- Merge compatibility follows the same data-schema rule and does not reject otherwise identical fields because producer metadata differs; different Arrow extension types remain incompatible.
 
 ## Error Contract
 
+- A downstream consumer closing standard output early is a normal CLI pipeline termination: the CLI exits successfully without printing an error, while library callers receive the typed `ParqkitError::BrokenPipe` variant.
 - Library errors use `ParqkitError`.
 - File read errors should carry path context and be classified into typed variants where practical.
 - File write errors should report the user-requested path, not an internal temporary path.

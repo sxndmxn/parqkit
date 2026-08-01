@@ -58,12 +58,11 @@ pub struct JsonBatchFileWriter {
 }
 
 impl JsonBatchFileWriter {
-    pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
-        let file = File::create(path)?;
+    pub fn create(file: File) -> Self {
         let writer = WriterBuilder::new()
             .with_explicit_nulls(true)
             .build::<_, JsonArray>(BufWriter::new(file));
-        Ok(Self { writer })
+        Self { writer }
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {
@@ -82,12 +81,11 @@ pub struct JsonlBatchFileWriter {
 }
 
 impl JsonlBatchFileWriter {
-    pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
-        let file = File::create(path)?;
+    pub fn create(file: File) -> Self {
         let writer = WriterBuilder::new()
             .with_explicit_nulls(true)
             .build::<_, LineDelimited>(BufWriter::new(file));
-        Ok(Self { writer })
+        Self { writer }
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {

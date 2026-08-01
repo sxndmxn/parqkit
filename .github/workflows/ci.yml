@@ -10,13 +10,35 @@ permissions:
   contents: read
 
 jobs:
-  rust:
-    name: Rust
+  msrv:
+    name: Rust 1.85 compatibility
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install minimum Rust
+        run: rustup toolchain install 1.85 --profile minimal
+
+      - name: Check minimum Rust
+        run: cargo +1.85 check --locked --all-targets --all-features
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Security audit
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust
         run: |
@@ -34,3 +56,12 @@ jobs:
 
       - name: Test
         run: cargo test --locked --all-targets --all-features
+
+      - name: Documentation
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --all-features
+
+      - name: Documentation tests
+        run: cargo test --locked --doc --all-features
+
+      - name: Package
+        run: cargo package --locked --all-features

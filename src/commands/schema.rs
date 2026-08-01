@@ -19,7 +19,7 @@ pub fn run(args: SchemaArgs) -> Result<()> {
         output::write_schema_results(structured_output, quiet, &results)?;
     } else {
         for result in results {
-            commands::print_source_header(&dataset, &result.path, quiet);
+            commands::print_source_header(&dataset, &result.path, quiet)?;
             output::write_schema_table(quiet, &result.columns)?;
         }
     }

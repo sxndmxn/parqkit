@@ -2,7 +2,8 @@ use crate::error::{ParqkitError, ResultExt};
 use crate::model::{ColumnInfo, ColumnType, CompressionCodec, CompressionSummary, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
-use arrow::datatypes::SchemaRef;
+use arrow::datatypes::{Schema, SchemaRef};
+use arrow::record_batch::RecordBatchOptions;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
@@ -12,9 +13,12 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
 
+const ARROW_EXTENSION_TYPE_NAME_KEY: &str = "ARROW:extension:name";
+const ARROW_EXTENSION_TYPE_METADATA_KEY: &str = "ARROW:extension:metadata";
+
 pub fn read_head(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch>)> {
     let builder = reader_builder(path)?;
-    let schema = Arc::clone(builder.schema());
+    let schema = schema_without_custom_metadata(builder.schema());
 
     if rows == 0 {
         return Ok((schema, Vec::new()));
@@ -40,8 +44,11 @@ pub fn read_head(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch
         } else {
             batch
         };
+        let batch = batch_with_schema(path, batch, &schema)?;
 
-        total_rows += batch.num_rows();
+        total_rows = total_rows.checked_add(batch.num_rows()).ok_or_else(|| {
+            ParqkitError::invalid_metadata(path, "decoded head row count overflow")
+        })?;
         batches.push(batch);
     }
 
@@ -50,7 +57,7 @@ pub fn read_head(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch
 
 pub fn read_tail(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch>)> {
     let builder = reader_builder(path)?;
-    let schema = Arc::clone(builder.schema());
+    let schema = schema_without_custom_metadata(builder.schema());
 
     if rows == 0 {
         return Ok((schema, Vec::new()));
@@ -73,14 +80,17 @@ pub fn read_tail(path: &Path, rows: usize) -> Result<(SchemaRef, Vec<RecordBatch
     for batch_result in reader {
         let batch = batch_result.map_err(|error| ParqkitError::corrupted(path, &error))?;
 
-        if skipped + batch.num_rows() <= rows_to_skip {
-            skipped += batch.num_rows();
+        let batch_end = skipped.checked_add(batch.num_rows()).ok_or_else(|| {
+            ParqkitError::invalid_metadata(path, "decoded tail row count overflow")
+        })?;
+        if batch_end <= rows_to_skip {
+            skipped = batch_end;
             continue;
         }
 
         let offset = rows_to_skip.saturating_sub(skipped);
         let sliced = batch.slice(offset, batch.num_rows() - offset);
-        result_batches.push(sliced);
+        result_batches.push(batch_with_schema(path, sliced, &schema)?);
         skipped = rows_to_skip;
     }
 
@@ -156,11 +166,12 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     }
 
     let first_builder = reader_builder(paths[0])?;
-    let schema = Arc::clone(first_builder.schema());
+    let schema = schema_without_custom_metadata(first_builder.schema());
 
     for path in paths.iter().skip(1) {
         let builder = reader_builder(path)?;
-        if builder.schema().as_ref() != schema.as_ref() {
+        let candidate_schema = schema_without_custom_metadata(builder.schema());
+        if candidate_schema.as_ref() != schema.as_ref() {
             return Err(ParqkitError::SchemaMismatch {
                 file1: paths[0].display().to_string(),
                 file2: path.display().to_string(),
@@ -169,9 +180,8 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
         }
     }
 
-    let pending_output = crate::atomic_output::PendingOutput::new(output)?;
-    let output_file = File::create(pending_output.path())
-        .map_err(|error| ParqkitError::write_error(output, error))?;
+    let mut pending_output = crate::atomic_output::PendingOutput::new(output)?;
+    let output_file = pending_output.take_file()?;
     let props = WriterProperties::builder()
         .set_compression(Compression::SNAPPY)
         .build();
@@ -186,6 +196,7 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
 
         for batch_result in reader {
             let batch = batch_result.map_err(|error| ParqkitError::corrupted(path, error))?;
+            let batch = batch_with_schema(path, batch, &schema)?;
             writer
                 .write(&batch)
                 .map_err(|error| ParqkitError::write_error(output, error))?;
@@ -196,6 +207,50 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
         .close()
         .map_err(|error| ParqkitError::write_error(output, error))?;
     pending_output.commit()
+}
+
+pub(crate) fn schema_without_custom_metadata(schema: &SchemaRef) -> SchemaRef {
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            let metadata = field
+                .metadata()
+                .iter()
+                .filter(|(key, _)| {
+                    matches!(
+                        key.as_str(),
+                        ARROW_EXTENSION_TYPE_NAME_KEY | ARROW_EXTENSION_TYPE_METADATA_KEY
+                    )
+                })
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            Arc::new(field.as_ref().clone().with_metadata(metadata))
+        })
+        .collect::<Vec<_>>();
+    Arc::new(Schema::new(fields))
+}
+
+pub(crate) fn batch_with_schema(
+    path: &Path,
+    batch: RecordBatch,
+    schema: &SchemaRef,
+) -> Result<RecordBatch> {
+    if schema_without_custom_metadata(&batch.schema()).as_ref() != schema.as_ref() {
+        return Err(ParqkitError::invalid_metadata(
+            path,
+            "decoded batch schema does not match the expected schema",
+        ));
+    }
+
+    let options = RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
+    RecordBatch::try_new_with_options(Arc::clone(schema), batch.columns().to_vec(), &options)
+        .map_err(|error| {
+            ParqkitError::invalid_metadata(
+                path,
+                format!("could not normalize decoded batch schema: {error}"),
+            )
+        })
 }
 
 fn tail_row_groups(
@@ -220,7 +275,9 @@ fn tail_row_groups(
         })?;
 
         selected_groups.push(row_group_index);
-        selected_rows = selected_rows.saturating_add(row_group_rows);
+        selected_rows = selected_rows.checked_add(row_group_rows).ok_or_else(|| {
+            ParqkitError::invalid_metadata(path, "selected tail row count overflow")
+        })?;
         if selected_rows >= rows {
             break;
         }

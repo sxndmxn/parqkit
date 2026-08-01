@@ -187,7 +187,7 @@ impl ProjectionPlan {
     ) -> Result<Self> {
         match projection {
             Projection::All => Ok(Self {
-                schema: schema_without_metadata(builder.schema()),
+                schema: engine::parquet::schema_without_custom_metadata(builder.schema()),
                 projection_mask: ProjectionMask::all(),
                 output_order: None,
             }),
@@ -212,9 +212,10 @@ impl ProjectionPlan {
                     .iter()
                     .map(|index| Arc::clone(&builder.schema().fields()[*index]))
                     .collect::<Vec<_>>();
+                let schema = Arc::new(Schema::new(fields));
 
                 Ok(Self {
-                    schema: Arc::new(Schema::new(fields)),
+                    schema: engine::parquet::schema_without_custom_metadata(&schema),
                     projection_mask: ProjectionMask::roots(builder.parquet_schema(), root_indices),
                     output_order,
                 })
@@ -272,13 +273,7 @@ impl ActiveSource {
         } else {
             batch
         };
-        if batch.schema().as_ref() != self.schema.as_ref() {
-            return Err(ParqkitError::invalid_metadata(
-                &self.path,
-                "decoded batch schema does not match planned projection",
-            ));
-        }
-        Ok(batch)
+        engine::parquet::batch_with_schema(&self.path, batch, &self.schema)
     }
 }
 
@@ -313,8 +308,4 @@ fn resolve_columns(path: &Path, schema: &SchemaRef, columns: &[String]) -> Resul
     }
 
     Ok(indices)
-}
-
-fn schema_without_metadata(schema: &SchemaRef) -> SchemaRef {
-    Arc::new(Schema::new(schema.fields().clone()))
 }

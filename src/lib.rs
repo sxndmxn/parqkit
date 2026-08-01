@@ -1,3 +1,34 @@
+//! Typed Parquet inspection, streaming, conversion, and merge operations.
+//!
+//! The library keeps input expansion and validation in [`Dataset`], returns
+//! typed metadata and Arrow results, and leaves presentation to callers. Use
+//! [`execute_query`] when rows should be decoded lazily in bounded batches.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use parqkit::{dataset_from_inputs, execute_query, Projection, QueryOptions, Result};
+//! use std::path::PathBuf;
+//!
+//! fn main() -> Result<()> {
+//!     let dataset = dataset_from_inputs(vec![PathBuf::from("data.parquet")])?;
+//!     let options = QueryOptions {
+//!         projection: Projection::Columns(vec!["name".into(), "id".into()]),
+//!         limit: Some(1_000),
+//!         batch_size: 256,
+//!     };
+//!
+//!     let stream = execute_query(&dataset, options)?;
+//!     let _schema = stream.compatible_schema()?;
+//!     for result in stream {
+//!         let batch = result?.batch;
+//!         // Consume this bounded Arrow record batch.
+//!         let _row_count = batch.num_rows();
+//!     }
+//!     Ok(())
+//! }
+//! ```
+
 mod api;
 mod atomic_output;
 mod cli;
@@ -21,6 +52,7 @@ pub use model::{
 };
 pub use query::QueryStream;
 
+/// Result type returned by Parqkit library operations.
 pub type Result<T> = std::result::Result<T, ParqkitError>;
 
 #[doc(hidden)]

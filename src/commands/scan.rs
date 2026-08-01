@@ -49,7 +49,7 @@ fn run_scan(
         output::write_structured_batches(structured_output, quiet, &schema, &batches)?;
     } else {
         for result in results {
-            commands::print_source_header(&dataset, &result.path, quiet);
+            commands::print_source_header(&dataset, &result.path, quiet)?;
             output::write_table_batches(quiet, &result.batches)?;
         }
     }

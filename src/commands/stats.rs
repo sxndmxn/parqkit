@@ -20,7 +20,7 @@ pub fn run(args: StatsArgs) -> Result<()> {
         output::write_stats_results(structured_output, quiet, &results)?;
     } else {
         for result in results {
-            commands::print_source_header(&dataset, &result.path, quiet);
+            commands::print_source_header(&dataset, &result.path, quiet)?;
             output::write_stats_table(quiet, &result.rows)?;
         }
     }

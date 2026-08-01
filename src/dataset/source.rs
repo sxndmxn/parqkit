@@ -1,10 +1,16 @@
 use crate::error::ParqkitError;
 use crate::Result;
 use std::collections::BTreeSet;
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 const MAX_GLOB_FILES: usize = 10_000;
 
+/// Ordered, validated Parquet input paths.
+///
+/// Explicit repeated inputs are preserved. Glob matches are sorted and
+/// deduplicated according to [`Dataset::from_inputs`].
 #[derive(Clone, Debug)]
 pub struct Dataset {
     paths: Vec<PathBuf>,
@@ -33,6 +39,11 @@ impl InputFile {
 }
 
 impl Dataset {
+    /// Validate paths, expand glob patterns, and construct a dataset.
+    ///
+    /// Returns [`ParqkitError::NoInputFiles`] when `inputs` is empty,
+    /// [`ParqkitError::NoFilesMatched`] for an unmatched pattern, and a typed
+    /// path error when an input is missing or is a directory.
     pub fn from_inputs(inputs: Vec<PathBuf>) -> Result<Self> {
         if inputs.is_empty() {
             return Err(ParqkitError::NoInputFiles);
@@ -43,7 +54,7 @@ impl Dataset {
         let mut seen_from_globs = BTreeSet::new();
 
         for input in inputs {
-            if is_glob_pattern(&input) {
+            if is_glob_pattern(&input)? {
                 let matches = glob_matches(&input)?;
                 push_glob_matches(&matches, &mut paths, &mut seen_paths, &mut seen_from_globs);
             } else {
@@ -62,17 +73,19 @@ impl Dataset {
         Ok(Self { paths })
     }
 
+    /// Iterate over source paths in dataset order.
     pub fn paths(&self) -> impl ExactSizeIterator<Item = &Path> {
         self.paths.iter().map(PathBuf::as_path)
     }
 
+    /// Return whether the dataset contains more than one source occurrence.
     pub fn is_multi_source(&self) -> bool {
         self.paths.len() > 1
     }
 }
 
 fn paths_from_input(input: &Path) -> Result<Vec<PathBuf>> {
-    if is_glob_pattern(input) {
+    if is_glob_pattern(input)? {
         glob_matches(input)
     } else {
         validate_file_path(input)?;
@@ -121,17 +134,25 @@ fn push_glob_matches(
     }
 }
 
-fn is_glob_pattern(path: &Path) -> bool {
+fn is_glob_pattern(path: &Path) -> Result<bool> {
+    match path.try_exists() {
+        Ok(true) => return Ok(false),
+        Ok(false) => {}
+        Err(error) => return Err(ParqkitError::from_read(path, error)),
+    }
     let path = path.to_string_lossy();
-    path.contains('*') || path.contains('?') || path.contains('[')
+    Ok(path.contains('*') || path.contains('?') || path.contains('['))
 }
 
 fn validate_file_path(path: &Path) -> Result<()> {
-    if !path.exists() {
-        return Err(ParqkitError::file_not_found(path));
-    }
-
-    if path.is_dir() {
+    let metadata = fs::metadata(path).map_err(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            ParqkitError::file_not_found(path)
+        } else {
+            ParqkitError::from_read(path, error)
+        }
+    })?;
+    if metadata.is_dir() {
         return Err(ParqkitError::is_directory(path));
     }
 

@@ -1,17 +1,25 @@
-# Parqkit — Fast Parquet CLI
+# Parqkit — Fast Parquet CLI and Rust library
 
-A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults.
+Inspect, preview, convert, and merge Parquet files with pretty interactive output and predictable formats for scripts. The typed, streaming library API is the foundation for future jq-like querying.
 
 ## Installation
 
+Parqkit requires Rust 1.85 or newer.
+
 ```bash
-cargo install --path .
+cargo install parqkit
+```
+
+From a source checkout:
+
+```bash
+cargo install --path . --locked
 ```
 
 ## Usage
 
 ```
-parqkit <COMMAND> [OPTIONS] <FILE>
+parqkit <COMMAND>
 
 Commands:
   schema    Show schema (column names, types, nullability)
@@ -67,7 +75,7 @@ $ parqkit tail data.parquet -n 2
 $ parqkit count data.parquet
 1000000
 
-$ parqkit count *.parquet
+$ parqkit count '*.parquet'
 part1.parquet: 500000
 part2.parquet: 500000
 Total: 1000000
@@ -130,9 +138,11 @@ $ parqkit schema data.parquet --output jsonl # One JSON object per schema column
 Schema and stats JSON output include display type plus explicit physical/logical type
 metadata. Nested Parquet columns use their full dotted paths. Stats output includes a
 `statistics_complete` field; unavailable null counts and bounds are emitted as `null`
-instead of misleading zeroes or partial values. Finite numeric and boolean bounds use
-native JSON types, non-finite floats use `"NaN"`, `"Infinity"`, or `"-Infinity"`, and
-physical binary values use deterministic hexadecimal strings.
+instead of misleading zeroes or partial values. Signed and unsigned integers, finite
+floats, and booleans use native JSON types. Decimals use exact scaled strings,
+non-finite floats use `"NaN"`, `"Infinity"`, or `"-Infinity"`, and non-logical binary
+values use deterministic hexadecimal strings. Parqkit ignores bounds whose column order
+is legacy, unknown, or undefined rather than presenting them as authoritative.
 
 Empty Parquet scans retain their schema, so CSV output still includes headers and
 multi-file structured scans still validate schema compatibility.
@@ -142,13 +152,16 @@ multi-file structured scans still validate schema compatibility.
 ### Glob support
 
 ```bash
-$ parqkit count data/*.parquet
-$ parqkit schema *.parquet
+$ parqkit count 'data/*.parquet'
+$ parqkit schema '*.parquet'
 ```
+
+Quote patterns to let Parqkit expand, sort, and deduplicate glob matches itself. Explicitly repeated file arguments remain repeated.
+An existing literal path takes precedence over pattern syntax, so names containing `*`, `?`, or `[` remain usable.
 
 ## Features
 
-- Sub-100ms startup time
+- Fast startup
 - Batch-oriented reads and conversions
 - Multiple output formats
 - Glob pattern support
@@ -158,6 +171,7 @@ $ parqkit schema *.parquet
 
 - [Core contracts](docs/core-contracts.md) captures the foundation invariants for input handling, output rendering, safe writes, and error behavior.
 - Stress fixtures and the `parqkit-generate` helper are opt-in: `cargo test --all-features` or `cargo build --features stress-tools --bin parqkit-generate`.
+- CI audits dependencies, builds, formats, lints, tests, documents, and packages the crate with the committed lockfile.
 
 ### Streaming library queries
 
@@ -183,4 +197,4 @@ Planning resolves every projected source schema before iteration. Projection, li
 
 ## License
 
-MIT
+[MIT](LICENSE)

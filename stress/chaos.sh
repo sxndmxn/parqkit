@@ -3,13 +3,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-PARQKIT="./target/release/parqkit"
+PARQKIT="$REPO_ROOT/target/release/parqkit"
 ITERATIONS=${1:-1000}
+
+cd "$REPO_ROOT"
+
+if [[ ! "$ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: iteration count must be a positive integer"
+    exit 2
+fi
 
 if [[ ! -f "$PARQKIT" ]]; then
     echo "Building Parqkit in release mode..."
-    cargo build --release
+    cargo build --release --locked
 fi
 
 if [[ ! -d "$FIXTURES_DIR" ]]; then
@@ -25,7 +33,7 @@ COMMANDS=("head" "tail" "count" "stats" "schema" "info")
 FORMATS=("table" "json" "jsonl" "csv")
 
 # Collect fixture files
-mapfile -t FILES < <(find "$FIXTURES_DIR" -name "*.parquet" -type f 2>/dev/null | head -50)
+mapfile -t FILES < <(fd --no-ignore --type f --extension parquet . "$FIXTURES_DIR" --max-results 50)
 
 if [[ ${#FILES[@]} -eq 0 ]]; then
     echo "Error: No parquet files found in $FIXTURES_DIR"
@@ -39,7 +47,7 @@ crashes=0
 errors=0
 successes=0
 
-for i in $(seq 1 $ITERATIONS); do
+for ((i = 1; i <= ITERATIONS; i++)); do
     # Random command
     cmd_idx=$((RANDOM % ${#COMMANDS[@]}))
     CMD=${COMMANDS[$cmd_idx]}
@@ -55,15 +63,20 @@ for i in $(seq 1 $ITERATIONS); do
     # Random row count for head/tail
     ROWS=$((RANDOM % 1000 + 1))
 
-    # Build command
+    # Build the command as an argument array so fixture names cannot be
+    # reinterpreted by a nested shell.
     case $CMD in
         head|tail)
-            FULL_CMD="$PARQKIT $CMD -n $ROWS \"$FILE\" -o $FMT"
+            COMMAND_ARGS=("$PARQKIT" "$CMD" -n "$ROWS" "$FILE" -o "$FMT")
+            ;;
+        count)
+            COMMAND_ARGS=("$PARQKIT" "$CMD" "$FILE")
             ;;
         *)
-            FULL_CMD="$PARQKIT $CMD \"$FILE\" -o $FMT"
+            COMMAND_ARGS=("$PARQKIT" "$CMD" "$FILE" -o "$FMT")
             ;;
     esac
+    printf -v FULL_CMD '%q ' "${COMMAND_ARGS[@]}"
 
     # Progress indicator
     if (( i % 100 == 0 )); then
@@ -72,18 +85,18 @@ for i in $(seq 1 $ITERATIONS); do
 
     # Execute with timeout
     set +e
-    timeout 30 bash -c "$FULL_CMD" > /dev/null 2>&1
+    timeout 30 "${COMMAND_ARGS[@]}" > /dev/null 2>&1
     exit_code=$?
     set -e
 
     case $exit_code in
         0)
-            ((successes++))
+            ((successes += 1))
             ;;
         124)
             # Timeout - not necessarily a crash
             echo "TIMEOUT: $FULL_CMD"
-            ((errors++))
+            ((errors += 1))
             ;;
         139|134|136|138)
             # SIGSEGV (139), SIGABRT (134), SIGFPE (136), SIGBUS (138)
@@ -92,11 +105,11 @@ for i in $(seq 1 $ITERATIONS); do
             echo "Exit code: $exit_code"
             echo "Command: $FULL_CMD"
             echo ""
-            ((crashes++))
+            ((crashes += 1))
             ;;
         *)
             # Regular error (expected for some edge cases)
-            ((errors++))
+            ((errors += 1))
             ;;
     esac
 done

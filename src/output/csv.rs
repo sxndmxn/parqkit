@@ -36,13 +36,12 @@ pub struct BatchFileWriter {
 }
 
 impl BatchFileWriter {
-    pub fn create(path: &std::path::Path, schema: SchemaRef) -> std::io::Result<Self> {
-        let file = File::create(path)?;
-        Ok(Self {
+    pub fn create(file: File, schema: SchemaRef) -> Self {
+        Self {
             writer: WriterBuilder::new().with_header(true).build(file),
             schema,
             wrote_batch: false,
-        })
+        }
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {

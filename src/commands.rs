@@ -1,6 +1,7 @@
 use crate::cli::args::Command;
 use crate::dataset::Dataset;
 use crate::Result;
+use std::io::Write;
 use std::path::Path;
 
 mod convert;
@@ -24,8 +25,9 @@ pub(crate) fn run(command: Command) -> Result<()> {
     }
 }
 
-fn print_source_header(dataset: &Dataset, path: &Path, quiet: bool) {
+fn print_source_header(dataset: &Dataset, path: &Path, quiet: bool) -> Result<()> {
     if dataset.is_multi_source() && !quiet {
-        println!("==> {} <==", path.display());
+        writeln!(std::io::stdout().lock(), "==> {} <==", path.display())?;
     }
+    Ok(())
 }

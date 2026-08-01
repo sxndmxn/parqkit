@@ -2,11 +2,14 @@
 name = "parqkit"
 version = "0.1.0"
 edition = "2021"
-description = "A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults."
+rust-version = "1.85"
+description = "A fast CLI and Rust library for inspecting, converting, and merging Parquet files."
 license = "MIT"
 repository = "https://github.com/sxndmxn/parqkit"
+documentation = "https://docs.rs/parqkit"
 keywords = ["parquet", "cli", "data", "arrow"]
 categories = ["command-line-utilities", "data-structures"]
+exclude = ["/.github", "/AGENTS.md", "/stress"]
 
 [features]
 default = []
@@ -14,14 +17,16 @@ stress-tools = ["dep:anyhow", "dep:rand"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-parquet = "53"
-arrow = { version = "53", features = ["prettyprint"] }
-comfy-table = "7"
+parquet = "59"
+arrow = { version = "59", features = ["prettyprint"] }
+# 7.2 uses language features newer than the crate's Rust 1.85 floor.
+comfy-table = "=7.1.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = { version = "1", optional = true }
 thiserror = "2"
 glob = "0.3"
+half = "2"
 rand = { version = "0.8", optional = true }
 
 [dev-dependencies]
@@ -46,6 +51,7 @@ unsafe_code = "forbid"
 unused_imports = "deny"
 unused_must_use = "deny"
 missing_debug_implementations = "warn"
+missing_docs = "deny"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
