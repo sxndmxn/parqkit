@@ -1,5 +1,5 @@
 use anyhow::Result;
-use arrow::array::{ArrayRef, Int64Array, StructArray};
+use arrow::array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow::datatypes::{DataType, Field, Fields, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
@@ -242,6 +242,193 @@ fn library_api_exposes_typed_schema_results() -> Result<()> {
 }
 
 #[test]
+fn streaming_query_pushes_down_projection_limit_and_batch_size() -> Result<()> {
+    let dataset = parqkit::dataset_from_inputs(vec![fixture_path()])?;
+    let options = parqkit::QueryOptions {
+        projection: parqkit::Projection::Columns(vec!["name".to_string(), "id".to_string()]),
+        limit: Some(3),
+        batch_size: 2,
+    };
+    let mut stream = parqkit::execute_query(&dataset, options)?;
+
+    assert_eq!(stream.sources().len(), 1);
+    assert_eq!(
+        stream.sources()[0]
+            .schema
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect::<Vec<_>>(),
+        vec!["name", "id"]
+    );
+    assert_eq!(stream.compatible_schema()?.fields().len(), 2);
+
+    let batches = stream.by_ref().collect::<parqkit::Result<Vec<_>>>()?;
+    assert_eq!(
+        batches
+            .iter()
+            .map(|result| result.batch.num_rows())
+            .collect::<Vec<_>>(),
+        vec![2, 1]
+    );
+    assert!(batches.iter().all(|result| result.source_index == 0));
+    let names = batches[0].batch.column(0);
+    let names = names
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .ok_or_else(|| anyhow::anyhow!("name projection should be a string array"))?;
+    let ids = batches[0].batch.column(1);
+    let ids = ids
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .ok_or_else(|| anyhow::anyhow!("id projection should be an int64 array"))?;
+    assert_eq!(names.value(0), "Alice");
+    assert_eq!(ids.value(0), 1);
+    assert!(stream.next().is_none());
+
+    Ok(())
+}
+
+#[test]
+fn streaming_query_preserves_repeated_sources_and_per_source_limits() -> Result<()> {
+    let fixture = fixture_path();
+    let dataset = parqkit::dataset_from_inputs(vec![fixture.clone(), fixture])?;
+    let options = parqkit::QueryOptions {
+        limit: Some(1),
+        ..parqkit::QueryOptions::default()
+    };
+    let stream = parqkit::execute_query(&dataset, options)?;
+
+    assert_eq!(stream.sources().len(), 2);
+    let batches = stream.collect::<parqkit::Result<Vec<_>>>()?;
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].source_index, 0);
+    assert_eq!(batches[1].source_index, 1);
+    assert_eq!(batches[0].batch.num_rows(), 1);
+    assert_eq!(batches[1].batch.num_rows(), 1);
+
+    Ok(())
+}
+
+#[test]
+fn streaming_query_retains_projected_schema_for_empty_sources() -> Result<()> {
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("first", DataType::Int64, false),
+        Field::new("second", DataType::Int64, true),
+    ]));
+    let input = temp_path("empty_query", "parquet")?;
+    write_parquet(&input, schema, &[])?;
+    let dataset = parqkit::dataset_from_inputs(vec![input.clone()])?;
+    let options = parqkit::QueryOptions {
+        projection: parqkit::Projection::Columns(vec!["second".to_string()]),
+        ..parqkit::QueryOptions::default()
+    };
+    let mut stream = parqkit::execute_query(&dataset, options)?;
+
+    assert_eq!(stream.sources()[0].schema.fields().len(), 1);
+    assert_eq!(stream.sources()[0].schema.field(0).name(), "second");
+    assert!(stream.next().is_none());
+
+    fs::remove_file(input)?;
+    Ok(())
+}
+
+#[test]
+fn streaming_query_validates_options_and_columns_during_planning() -> Result<()> {
+    let dataset = parqkit::dataset_from_inputs(vec![fixture_path()])?;
+    let invalid_batch_size = parqkit::QueryOptions {
+        batch_size: 0,
+        ..parqkit::QueryOptions::default()
+    };
+    let Err(error) = parqkit::execute_query(&dataset, invalid_batch_size) else {
+        return Err(anyhow::anyhow!("zero query batch size should fail"));
+    };
+    assert!(matches!(error, parqkit::ParqkitError::InvalidQuery { .. }));
+
+    let missing_column = parqkit::QueryOptions {
+        projection: parqkit::Projection::Columns(vec!["missing".to_string()]),
+        ..parqkit::QueryOptions::default()
+    };
+    let Err(error) = parqkit::execute_query(&dataset, missing_column) else {
+        return Err(anyhow::anyhow!("missing projected column should fail"));
+    };
+    assert!(matches!(
+        error,
+        parqkit::ParqkitError::ColumnNotFound { .. }
+    ));
+
+    let duplicate_column = parqkit::QueryOptions {
+        projection: parqkit::Projection::Columns(vec!["id".to_string(), "id".to_string()]),
+        ..parqkit::QueryOptions::default()
+    };
+    let Err(error) = parqkit::execute_query(&dataset, duplicate_column) else {
+        return Err(anyhow::anyhow!("duplicate projected column should fail"));
+    };
+    assert!(matches!(error, parqkit::ParqkitError::InvalidQuery { .. }));
+
+    Ok(())
+}
+
+#[test]
+fn streaming_query_reports_incompatible_projected_schemas_before_reading() -> Result<()> {
+    let left_schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Int64,
+        false,
+    )]));
+    let right_schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Utf8,
+        false,
+    )]));
+    let left_batch = RecordBatch::try_new(
+        Arc::clone(&left_schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let right_batch = RecordBatch::try_new(
+        Arc::clone(&right_schema),
+        vec![Arc::new(StringArray::from(vec!["one"])) as ArrayRef],
+    )?;
+    let left = temp_path("query_schema_left", "parquet")?;
+    let right = temp_path("query_schema_right", "parquet")?;
+    write_parquet(&left, left_schema, &[left_batch])?;
+    write_parquet(&right, right_schema, &[right_batch])?;
+    let dataset = parqkit::dataset_from_inputs(vec![left.clone(), right.clone()])?;
+    let mut stream = parqkit::execute_query(&dataset, parqkit::QueryOptions::default())?;
+
+    assert!(matches!(
+        stream.compatible_schema(),
+        Err(parqkit::ParqkitError::SchemaMismatch { .. })
+    ));
+    assert_eq!(
+        stream.next().transpose()?.map(|batch| batch.source_index),
+        Some(0)
+    );
+
+    fs::remove_file(left)?;
+    fs::remove_file(right)?;
+    Ok(())
+}
+
+#[test]
+fn streaming_query_defers_data_access_and_fuses_after_an_error() -> Result<()> {
+    let input = temp_path("lazy_query", "parquet")?;
+    fs::copy(fixture_path(), &input)?;
+    let dataset = parqkit::dataset_from_inputs(vec![input.clone()])?;
+    let mut stream = parqkit::execute_query(&dataset, parqkit::QueryOptions::default())?;
+    assert_eq!(stream.sources().len(), 1);
+
+    fs::remove_file(input)?;
+    assert!(matches!(
+        stream.next(),
+        Some(Err(parqkit::ParqkitError::FileNotFound { .. }))
+    ));
+    assert!(stream.next().is_none());
+
+    Ok(())
+}
+
+#[test]
 fn nested_columns_use_full_paths_and_effective_nullability() -> Result<()> {
     let child_fields = Fields::from(vec![Arc::new(Field::new("child", DataType::Int64, false))]);
     let schema = Arc::new(Schema::new(vec![Field::new(
@@ -265,6 +452,21 @@ fn nested_columns_use_full_paths_and_effective_nullability() -> Result<()> {
 
     let stats_results = parqkit::stats(&dataset, Some("parent.child"))?;
     assert_eq!(stats_results[0].rows[0].column, "parent.child");
+
+    let query_options = parqkit::QueryOptions {
+        projection: parqkit::Projection::Columns(vec!["parent".to_string()]),
+        ..parqkit::QueryOptions::default()
+    };
+    let query = parqkit::execute_query(&dataset, query_options)?;
+    assert_eq!(query.sources()[0].schema.field(0).name(), "parent");
+    assert_eq!(
+        query
+            .collect::<parqkit::Result<Vec<_>>>()?
+            .iter()
+            .map(|batch| batch.batch.num_rows())
+            .sum::<usize>(),
+        2
+    );
 
     fs::remove_file(input)?;
     Ok(())

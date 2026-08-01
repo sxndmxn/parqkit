@@ -61,6 +61,9 @@ pub enum ParqkitError {
 
     #[error("Invalid Parquet metadata in {path}\n  {details}")]
     InvalidMetadata { path: String, details: String },
+
+    #[error("Invalid query\n  {details}")]
+    InvalidQuery { details: String },
 }
 
 impl ParqkitError {
@@ -160,6 +163,12 @@ impl ParqkitError {
     pub fn invalid_metadata(path: &Path, err: impl std::fmt::Display) -> Self {
         Self::InvalidMetadata {
             path: path.display().to_string(),
+            details: err.to_string(),
+        }
+    }
+
+    pub fn invalid_query(err: impl std::fmt::Display) -> Self {
+        Self::InvalidQuery {
             details: err.to_string(),
         }
     }

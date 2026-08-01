@@ -38,6 +38,16 @@ Until the core is stable, changes should harden existing behavior instead of add
 - Non-finite stats bounds use explicit JSON strings because JSON has no native NaN or infinity values.
 - `count` intentionally prints plain text counts instead of using the structured output system.
 
+## Streaming Query Contract
+
+- `execute_query` is the public foundation for projection and future query execution.
+- Query planning validates options and reads every source's Parquet metadata before returning, but record batches are decoded only as `QueryStream` advances.
+- `Projection::Columns` selects top-level Arrow columns, pushes that selection into the Parquet reader, and preserves the caller's requested column order.
+- Empty projections, duplicate projected columns, unknown columns, and zero batch sizes are typed planning errors.
+- Batch size and row limit apply independently to each dataset source. Source order and repeated explicit inputs are preserved through `QueryBatch::source_index`.
+- `QueryStream::sources` retains every projected source schema, including empty sources. Structured multi-file consumers call `compatible_schema` before writing output.
+- A decoding failure terminates and fuses the stream. The query layer returns typed data and errors; it does not render output or weaken the existing atomic-write boundary.
+
 ## Safe Write Contract
 
 - Generated output is written to a same-directory temporary file and renamed into place only after the writer successfully finishes and buffered data is flushed.
@@ -54,7 +64,7 @@ Until the core is stable, changes should harden existing behavior instead of add
 
 ## Future Query Foundation
 
-- Query/projection/filter features should build on typed library results and Arrow batches, not on rendered text.
+- Filter and expression features should extend `execute_query` and its Arrow batches, not rendered text.
 - Output contracts should remain independent from query parsing.
 - New query features should not weaken dataset validation, safe writes, or machine-readable output guarantees.
 

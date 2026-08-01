@@ -8,6 +8,55 @@ use parquet::schema::types::ColumnDescriptor;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+pub const DEFAULT_QUERY_BATCH_SIZE: usize = 1024;
+
+/// Columns decoded by a streaming query.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum Projection {
+    /// Decode every top-level Arrow column.
+    #[default]
+    All,
+    /// Decode the named top-level Arrow columns in the requested order.
+    Columns(Vec<String>),
+}
+
+/// Controls streaming query execution for each source in a dataset.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueryOptions {
+    pub projection: Projection,
+    /// Maximum rows decoded from each source. `None` reads every row.
+    pub limit: Option<usize>,
+    /// Maximum rows in each yielded record batch. Must be greater than zero.
+    pub batch_size: usize,
+}
+
+impl Default for QueryOptions {
+    fn default() -> Self {
+        Self {
+            projection: Projection::All,
+            limit: None,
+            batch_size: DEFAULT_QUERY_BATCH_SIZE,
+        }
+    }
+}
+
+/// Metadata produced while planning one source in a streaming query.
+#[derive(Clone, Debug)]
+pub struct QuerySource {
+    pub path: PathBuf,
+    /// Projected Arrow schema, retained even when the source has no rows.
+    pub schema: SchemaRef,
+}
+
+/// One decoded batch from a streaming query.
+#[derive(Clone, Debug)]
+pub struct QueryBatch {
+    /// Position of this batch's source in [`crate::QueryStream::sources`].
+    pub source_index: usize,
+    pub path: PathBuf,
+    pub batch: RecordBatch,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScanKind {
     Head,

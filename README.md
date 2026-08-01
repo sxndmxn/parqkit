@@ -159,6 +159,28 @@ $ parqkit schema *.parquet
 - [Core contracts](docs/core-contracts.md) captures the foundation invariants for input handling, output rendering, safe writes, and error behavior.
 - Stress fixtures and the `parqkit-generate` helper are opt-in: `cargo test --all-features` or `cargo build --features stress-tools --bin parqkit-generate`.
 
+### Streaming library queries
+
+The library API can project and stream Arrow batches without loading complete scan results:
+
+```rust
+let dataset = parqkit::dataset_from_inputs(vec!["data.parquet".into()])?;
+let options = parqkit::QueryOptions {
+    projection: parqkit::Projection::Columns(vec!["name".into(), "id".into()]),
+    limit: Some(1_000),
+    batch_size: 256,
+};
+let stream = parqkit::execute_query(&dataset, options)?;
+
+let _output_schema = stream.compatible_schema()?;
+for result in stream {
+    let batch = result?.batch;
+    // Transform or write this bounded Arrow batch.
+}
+```
+
+Planning resolves every projected source schema before iteration. Projection, limits, and batching are pushed into the Parquet reader; consumers validate multi-source compatibility before output, and existing output code remains responsible for atomic file replacement.
+
 ## License
 
 MIT

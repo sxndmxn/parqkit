@@ -7,16 +7,19 @@ mod engine;
 mod error;
 mod model;
 mod output;
+mod query;
 
-pub use api::{count, dataset_from_inputs, info, merge, scan, schema, stats};
+pub use api::{count, dataset_from_inputs, execute_query, info, merge, scan, schema, stats};
 use clap::Parser;
 pub use dataset::Dataset;
 pub use error::ParqkitError;
 pub use model::{
     ColumnInfo, ColumnStats, ColumnType, CompressionCodec, CompressionSummary, CountEntry,
-    CountResult, FileInfo, LogicalTypeKind, PhysicalType, ScanKind, ScanOptions, ScanResult,
-    SchemaResult, StatValue, StatsResult, TimeUnit,
+    CountResult, FileInfo, LogicalTypeKind, PhysicalType, Projection, QueryBatch, QueryOptions,
+    QuerySource, ScanKind, ScanOptions, ScanResult, SchemaResult, StatValue, StatsResult, TimeUnit,
+    DEFAULT_QUERY_BATCH_SIZE,
 };
+pub use query::QueryStream;
 
 pub type Result<T> = std::result::Result<T, ParqkitError>;
 

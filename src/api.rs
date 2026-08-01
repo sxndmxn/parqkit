@@ -1,13 +1,24 @@
 use crate::dataset::Dataset;
 use crate::engine;
 use crate::model::{
-    CountEntry, CountResult, FileInfo, ScanKind, ScanOptions, ScanResult, SchemaResult, StatsResult,
+    CountEntry, CountResult, FileInfo, QueryOptions, ScanKind, ScanOptions, ScanResult,
+    SchemaResult, StatsResult,
 };
-use crate::Result;
+use crate::{QueryStream, Result};
 use std::path::{Path, PathBuf};
 
 pub fn dataset_from_inputs(inputs: Vec<PathBuf>) -> Result<Dataset> {
     Dataset::from_inputs(inputs)
+}
+
+/// Plan a streaming query over every source in `dataset`.
+///
+/// Planning validates the query and reads each source's Parquet metadata before
+/// returning. Record batches are decoded lazily as the returned stream is
+/// iterated. See [`QueryStream::sources`] for the projected schema of every
+/// source, including sources with no rows.
+pub fn execute_query(dataset: &Dataset, options: QueryOptions) -> Result<QueryStream> {
+    QueryStream::try_new(dataset, options)
 }
 
 pub fn schema(dataset: &Dataset) -> Result<Vec<SchemaResult>> {
